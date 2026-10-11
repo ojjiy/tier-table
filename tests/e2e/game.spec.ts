@@ -20,7 +20,10 @@ test("2タブで2ラウンドを遊び、320pxでもはみ出さず復帰する"
   await expect(
     a.getByRole("heading", { name: "みんなを待っています" }),
   ).toBeVisible();
-  const b = await context.newPage();
+  const guestContext = process.env.TEST_FIREBASE
+    ? await context.browser()!.newContext()
+    : context;
+  const b = await guestContext.newPage();
   await b.goto(a.url());
   await b.getByLabel("あなたの名前").fill("みどり");
   await b.getByRole("button", { name: "ルームに参加" }).click();
@@ -65,6 +68,7 @@ test("2タブで2ラウンドを遊び、320pxでもはみ出さず復帰する"
   expect(
     await a.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBe(true);
+  if (guestContext !== context) await guestContext.close();
 });
 test("入力されたHTMLは実行されない", async ({ page }) => {
   await page.goto("/");
@@ -138,4 +142,46 @@ test("入力中のIMEイベントとフォーカスを保ち、共有・コピ�
     await expect(input).toHaveValue("りんご");
     await expect(a.locator("#collection-status")).toContainText("0 / 2");
   }
+});
+
+test("送信中はワードを固定し、完了後に編集できる", async ({
+  context,
+  page: a,
+}) => {
+  test.skip(
+    Boolean(process.env.TEST_FIREBASE),
+    "local storeの遅延を使うUI競合試験",
+  );
+  await a.goto("/");
+  await a.getByLabel("あなたの名前").fill("a");
+  await a.getByRole("button", { name: "ルームをつくる" }).click();
+  await expect(
+    a.getByRole("heading", { name: "みんなを待っています" }),
+  ).toBeVisible();
+  const b = await context.newPage();
+  await b.goto(a.url());
+  await b.getByLabel("あなたの名前").fill("b");
+  await b.getByRole("button", { name: "ルームに参加" }).click();
+  await a.getByRole("button", { name: "ゲームをはじめる" }).click();
+  await a.getByLabel("今回のテーマ", { exact: true }).fill("t");
+  await a.getByRole("button", { name: "ワード募集をはじめる" }).click();
+  for (let i = 0; i < 3; i++)
+    await a
+      .getByLabel(`ワード${i + 1}`, { exact: true })
+      .fill(["りんご", "みかん", "ぶどう"][i]);
+  await a.evaluate(async () => {
+    const path = "/src/store/local.ts";
+    const { LocalStore } = await import(path);
+    const original = LocalStore.prototype.submitDraft;
+    LocalStore.prototype.submitDraft = async function (...args: unknown[]) {
+      await new Promise((r) => setTimeout(r, 1200));
+      return original.apply(this, args);
+    };
+  });
+  await a.getByRole("button", { name: "ワードを送信", exact: true }).click();
+  await expect(a.getByLabel("ワード1", { exact: true })).toBeDisabled();
+  await expect(
+    a.getByRole("button", { name: "送信済み・再送信できます", exact: true }),
+  ).toBeVisible();
+  await expect(a.getByLabel("ワード1", { exact: true })).toBeEnabled();
 });

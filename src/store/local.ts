@@ -22,6 +22,24 @@ interface StorageLike {
   getItem(k: string): string | null;
   setItem(k: string, v: string): void;
 }
+const queues = new Map<string, Promise<unknown>>();
+async function roomLock<T>(id: string, work: () => T): Promise<T> {
+  if (typeof window !== "undefined" && navigator.locks)
+    return navigator.locks.request(`tier-room:${id}`, work);
+  // In-process fallback for test runners. Browsers need shared locks across tabs.
+  if (typeof window !== "undefined")
+    throw new Error(
+      "このブラウザではローカル同期を利用できません。最新版のブラウザをお使いください。",
+    );
+  const previous = queues.get(id) ?? Promise.resolve();
+  const task = previous.catch(() => {}).then(work);
+  queues.set(id, task);
+  try {
+    return await task;
+  } finally {
+    if (queues.get(id) === task) queues.delete(id);
+  }
+}
 export class LocalStore implements Store {
   mode = "local" as const;
   constructor(
@@ -41,6 +59,13 @@ export class LocalStore implements Store {
     if (typeof window !== "undefined")
       window.dispatchEvent(new Event("tier-update"));
   }
+  private async mutate(id: string, change: (s: State) => void) {
+    await roomLock(id, () => {
+      const s = this.load(id);
+      change(s);
+      this.write(id, s);
+    });
+  }
   async createRoom(name: string) {
     const id = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
     this.write(id, {
@@ -52,18 +77,18 @@ export class LocalStore implements Store {
     return id;
   }
   async joinRoom(id: string, name: string) {
-    const s = this.load(id);
-    if (s.room.players.some((p) => p.id === this.playerId)) return;
-    requireThat(
-      s.room.phase === "lobby" && s.room.players.length < 6,
-      "開始済み、または満員です",
-    );
-    s.room.players.push({
-      id: this.playerId,
-      name: nameOf(name),
-      joinedAt: Date.now(),
+    await this.mutate(id, (s) => {
+      if (s.room.players.some((p) => p.id === this.playerId)) return;
+      requireThat(
+        s.room.phase === "lobby" && s.room.players.length < 6,
+        "開始済み、または満員です",
+      );
+      s.room.players.push({
+        id: this.playerId,
+        name: nameOf(name),
+        joinedAt: Date.now(),
+      });
     });
-    this.write(id, s);
   }
   async read(id: string): Promise<RoomSnapshot> {
     const s = this.load(id);
@@ -103,63 +128,68 @@ export class LocalStore implements Store {
     };
   }
   async saveDraft(id: string, roundId: string, draft: Draft) {
-    const s = this.load(id);
-    checkDraft(s.room, this.playerId, roundId, draft);
-    (s.drafts[roundId] ??= {})[this.playerId] = draft;
-    this.write(id, s);
+    await this.mutate(id, (s) => {
+      checkDraft(s.room, this.playerId, roundId, draft);
+      (s.drafts[roundId] ??= {})[this.playerId] = draft;
+    });
   }
   async submitDraft(id: string, roundId: string, words: string[]) {
-    const s = this.load(id);
-    checkSubmission(
-      s.room,
-      this.playerId,
-      words,
-      Object.values(s.drafts[roundId] ?? {}),
-    );
-    await this.saveDraft(id, roundId, {
-      playerId: this.playerId,
-      words: words.map((w) => w.trim()),
-      submitted: true,
+    await this.mutate(id, (s) => {
+      const draft = {
+        playerId: this.playerId,
+        words: words.map((w) => w.trim()),
+        submitted: true,
+      };
+      checkDraft(s.room, this.playerId, roundId, draft);
+      checkSubmission(
+        s.room,
+        this.playerId,
+        words,
+        Object.values(s.drafts[roundId] ?? {}),
+      );
+      (s.drafts[roundId] ??= {})[this.playerId] = draft;
     });
   }
   async saveAnswer(id: string, roundId: string, answer: Answer) {
-    const s = this.load(id);
-    checkAnswer(s.room, this.playerId, roundId, answer.placement, Date.now());
-    requireThat(!s.answers[roundId]?.[this.playerId], "回答は送信済みです");
-    (s.answers[roundId] ??= {})[this.playerId] = {
-      placement: answer.placement,
-      submittedAt: Date.now(),
-    };
-    if (s.room.phase === "arrange") {
-      s.room.phase = "predict";
-      s.room.predictionDeadline = Date.now() + 180000;
-    }
-    this.write(id, s);
+    await this.mutate(id, (s) => {
+      checkAnswer(s.room, this.playerId, roundId, answer.placement, Date.now());
+      requireThat(!s.answers[roundId]?.[this.playerId], "回答は送信済みです");
+      (s.answers[roundId] ??= {})[this.playerId] = {
+        placement: answer.placement,
+        submittedAt: Date.now(),
+      };
+      if (s.room.phase === "arrange") {
+        s.room.phase = "predict";
+        s.room.predictionDeadline = Date.now() + 180000;
+      }
+    });
   }
   async advance(id: string, action: HostAction) {
-    const s = this.load(id);
-    s.room = transition(
-      s.room,
-      this.playerId,
-      action,
-      Object.values(s.drafts[s.room.roundId] ?? {}),
-      Object.keys(s.answers[s.room.roundId] ?? {}),
-      s.results,
-    );
-    this.write(id, s);
+    await this.mutate(id, (s) => {
+      s.room = transition(
+        s.room,
+        this.playerId,
+        action,
+        Object.values(s.drafts[s.room.roundId] ?? {}),
+        Object.keys(s.answers[s.room.roundId] ?? {}),
+        s.results,
+      );
+    });
   }
   async publishCorrect(id: string, roundId: string) {
-    const s = this.load(id);
-    current(s.room, roundId);
-    requireThat(
-      s.room.phase === "reveal" &&
-        s.room.roster[s.room.roundIndex] === this.playerId,
-      "正解はまだ公開できません",
-    );
-    if (s.results.some((r) => r.roundId === roundId)) return;
-    const answers = s.answers[roundId] ?? {};
-    requireThat(answers[this.playerId], "正解が保存されていません");
-    s.results.push(resultOf(s.room, answers[this.playerId].placement, answers));
-    this.write(id, s);
+    await this.mutate(id, (s) => {
+      current(s.room, roundId);
+      requireThat(
+        s.room.phase === "reveal" &&
+          s.room.roster[s.room.roundIndex] === this.playerId,
+        "正解はまだ公開できません",
+      );
+      if (s.results.some((r) => r.roundId === roundId)) return;
+      const answers = s.answers[roundId] ?? {};
+      requireThat(answers[this.playerId], "正解が保存されていません");
+      s.results.push(
+        resultOf(s.room, answers[this.playerId].placement, answers),
+      );
+    });
   }
 }

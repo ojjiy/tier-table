@@ -38,6 +38,12 @@ npm run dev
 
 Firebase Web設定はブラウザへ公開される識別情報です。サービスアカウント秘密鍵や管理者用資格情報を入力しないでください。アクセスは匿名認証とFirestoreルールで制御します。プレイヤー同士の回答は公開まで読み取れず、回答の変更もできません。部外者にはロビーへの参加に必要な情報のみ読み取りを許可し、開始後のゲーム情報は参加者だけが読めます。
 
+### App Check
+
+App Checkを強制適用する場合は、Webアプリに登録したサイトキーを`VITE_FIREBASE_APPCHECK_SITE_KEY`へ、プロバイダを`VITE_FIREBASE_APPCHECK_PROVIDER`へ設定します。値はreCAPTCHA Enterpriseなら`enterprise`、reCAPTCHA v3なら`v3`です。GitHub ActionsのVariablesにも同名で登録してください。許可ドメインには自分の公開先（例：`ojjiy.github.io`）を登録します。シークレットキーは使用しません。
+
+アプリはFirebase接続前にApp Checkを初期化し、トークンの自動更新を有効にします。Emulatorでは本番App Checkを起動しません。許可していないlocalhostでは本番接続が拒否されるため、ローカル確認はFirebase設定を空にしたモードかEmulatorを使ってください。[Firebase公式の設定手順](https://firebase.google.com/docs/app-check/web/recaptcha-enterprise-provider)も参照できます。
+
 ## GitHub Pagesへ公開
 
 1. 本リポジトリをGitHubへpushします。
@@ -58,6 +64,7 @@ npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run test:e2e:pages
 ```
 
 Firestore権限とFirebase同期のテストにはJava 21以上も必要です。テストは`demo-tier-table`のEmulatorだけに接続し、本番データを変更しません。

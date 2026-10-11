@@ -448,22 +448,32 @@ function renderPhase(s: RoomSnapshot) {
       );
     const send = async () => {
       clearTimeout(syncTimer);
-      await writeQueue;
+      const inputs = [...draftInputs];
       const words = getWords();
-      const latest = await store.read(roomId);
-      const errors = validateDraft(me, words, latest.drafts, count);
-      draftInputs.forEach((input, i) => {
-        input.setAttribute("aria-invalid", String(Boolean(errors[i])));
+      inputs.forEach((input) => {
+        input.disabled = true;
       });
-      if (Object.keys(errors).length)
-        throw new Error(
-          Object.entries(errors)
-            .map(([i, t]) => `ワード${Number(i) + 1}：${t}`)
-            .join(" / "),
-        );
-      await store.submitDraft(roomId, r.roundId, words);
-      wordsDirty = false;
-      if (submitButton) submitButton.textContent = "送信済み・再送信できます";
+      try {
+        await writeQueue;
+        const latest = await store.read(roomId);
+        const errors = validateDraft(me, words, latest.drafts, count);
+        draftInputs.forEach((input, i) => {
+          input.setAttribute("aria-invalid", String(Boolean(errors[i])));
+        });
+        if (Object.keys(errors).length)
+          throw new Error(
+            Object.entries(errors)
+              .map(([i, t]) => `ワード${Number(i) + 1}：${t}`)
+              .join(" / "),
+          );
+        await store.submitDraft(roomId, r.roundId, words);
+        wordsDirty = false;
+        if (submitButton) submitButton.textContent = "送信済み・再送信できます";
+      } finally {
+        inputs.forEach((input) => {
+          input.disabled = false;
+        });
+      }
     };
     submitButton = button(
       mine?.submitted ? "送信済み・再送信できます" : "ワードを送信",

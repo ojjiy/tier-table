@@ -138,3 +138,23 @@ it("期限後の回答を拒否し、答え合わせでのみ回答を公開", a
   );
   await assertSucceeds(getDoc(doc(db("b"), "rooms/r/rounds/1/answers/a")));
 });
+it("6人でも未提出者がいる間は早期公開を拒否する", async () => {
+  const ids = ["a", "b", "c", "d", "e", "f"];
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const admin = ctx.firestore();
+    await updateDoc(doc(admin, "rooms/r"), {
+      players: ids.map((id, i) => ({ id, name: id, joinedAt: i })),
+      memberIds: ids,
+      roster: ids,
+      phase: "predict",
+      predictionDeadline: Date.now() + 180000,
+    });
+    for (const id of ["b", "c", "d", "e"])
+      await setDoc(doc(admin, `rooms/r/rounds/1/ready/${id}`), { ready: true });
+  });
+  await assertFails(updateDoc(doc(db("a"), "rooms/r"), { phase: "reveal" }));
+  await env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), "rooms/r/rounds/1/ready/f"), { ready: true }),
+  );
+  await assertSucceeds(updateDoc(doc(db("a"), "rooms/r"), { phase: "reveal" }));
+});

@@ -97,3 +97,42 @@ it("期限後の提出を拒否し、未提出者は0点になる", async () => 
   await a.publishCorrect(id, r);
   expect((await a.read(id)).results[0].scores.b ?? 0).toBe(0);
 });
+it("別タブ相当の同時回答で送信済み回答を失わない", async () => {
+  const a = new LocalStore("a", storage);
+  const id = await a.createRoom("a");
+  await new LocalStore("b", storage).joinRoom(id, "b");
+  await new LocalStore("c", storage).joinRoom(id, "c");
+  await a.advance(id, { type: "start" });
+  await a.advance(id, { type: "theme", theme: "t" });
+  const r = (await a.read(id)).room.roundId;
+  await a.submitDraft(id, r, ["a", "b"]);
+  await new LocalStore("b", storage).submitDraft(id, r, ["c", "d"]);
+  await new LocalStore("c", storage).submitDraft(id, r, ["e", "f"]);
+  await a.advance(id, { type: "candidates" });
+  const p = Object.fromEntries(
+    (await a.read(id)).room.candidates.map((w) => [w.id, "S"]),
+  ) as any;
+  await a.saveAnswer(id, r, { placement: p, submittedAt: Date.now() });
+  let concurrent: Promise<void> | undefined;
+  let inserted = false;
+  let c: LocalStore;
+  const interleaved = {
+    getItem: storage.getItem,
+    setItem: (k: string, v: string) => {
+      if (!inserted && JSON.parse(v).answers?.[r]?.b) {
+        inserted = true;
+        concurrent = c.saveAnswer(id, r, {
+          placement: p,
+          submittedAt: Date.now(),
+        });
+      }
+      storage.setItem(k, v);
+    },
+  };
+  const b = new LocalStore("b", interleaved);
+  c = new LocalStore("c", interleaved);
+  await b.saveAnswer(id, r, { placement: p, submittedAt: Date.now() });
+  await concurrent;
+  expect((await b.read(id)).ready.sort()).toEqual(["b", "c"]);
+  expect((await c.read(id)).answer).toBeDefined();
+});

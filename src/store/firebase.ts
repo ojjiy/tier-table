@@ -1,4 +1,5 @@
 import { initializeApp } from "firebase/app";
+import { configureAppCheck } from "./app-check";
 import {
   getAuth,
   setPersistence,
@@ -55,6 +56,7 @@ export async function firebaseStore(): Promise<Store> {
     projectId: e.VITE_FIREBASE_PROJECT_ID,
     appId: e.VITE_FIREBASE_APP_ID,
   });
+  configureAppCheck(app, e);
   const auth = getAuth(app);
   const db = getFirestore(app);
   if (e.VITE_USE_EMULATORS === "true") {
