@@ -136,3 +136,43 @@ it("別タブ相当の同時回答で送信済み回答を失わない", async (
   expect((await b.read(id)).ready.sort()).toEqual(["a", "b", "c"]);
   expect((await c.read(id)).answer).toBeDefined();
 });
+it("キック後も完了済み得点を残し、退出者の再参加と書き込みを拒否する", async () => {
+  const a = new LocalStore("a", storage),
+    b = new LocalStore("b", storage),
+    c = new LocalStore("c", storage);
+  const id = await a.createRoom("A");
+  await b.joinRoom(id, "B");
+  await c.joinRoom(id, "C");
+  await a.advance(id, { type: "start" });
+  await a.advance(id, { type: "theme", theme: "t" });
+  const r = (await a.read(id)).room.roundId;
+  await a.submitDraft(id, r, ["a", "b"]);
+  await b.submitDraft(id, r, ["c", "d"]);
+  await c.submitDraft(id, r, ["e", "f"]);
+  await a.advance(id, { type: "candidates" });
+  const p = Object.fromEntries(
+    (await a.read(id)).room.candidates.map((w) => [w.id, "S"]),
+  ) as any;
+  for (const player of [a, b, c])
+    await player.saveAnswer(id, r, { placement: p, submittedAt: 1 });
+  await a.advance(id, { type: "close" });
+  await a.publishCorrect(id, r);
+  await b.kickPlayer(id, "a");
+  const s = await b.read(id);
+  expect(s.results[0].scores.b).toBe(6);
+  expect(s.room.hostId).toBe("b");
+  expect(s.room.roster[s.room.roundIndex]).toBe("b");
+  await expect(a.read(id)).rejects.toThrow();
+  await expect(a.joinRoom(id, "A")).rejects.toThrow();
+  await expect(
+    a.saveAnswer(id, r, { placement: p, submittedAt: 1 }),
+  ).rejects.toThrow();
+  await b.advance(id, { type: "theme", theme: "new" });
+  const nr = (await b.read(id)).room.roundId;
+  await b.submitDraft(id, nr, ["g", "h", "i"]);
+  await c.submitDraft(id, nr, ["j", "k", "l"]);
+  expect((await b.read(id)).drafts).toHaveLength(2);
+  await c.kickPlayer(id, "b");
+  expect((await c.read(id)).room.phase).toBe("finished");
+  expect((await c.read(id)).results[0].scores.c).toBe(6);
+});

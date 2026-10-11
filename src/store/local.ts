@@ -11,6 +11,7 @@ import {
   checkAnswer,
   transition,
   resultOf,
+  kickTransition,
 } from "./logic";
 interface State {
   room: Room;
@@ -78,6 +79,10 @@ export class LocalStore implements Store {
   }
   async joinRoom(id: string, name: string) {
     await this.mutate(id, (s) => {
+      requireThat(
+        !s.room.departed?.some((p) => p.id === this.playerId),
+        "このルームから退出しています",
+      );
       if (s.room.players.some((p) => p.id === this.playerId)) return;
       requireThat(
         s.room.phase === "lobby" && s.room.players.length < 6,
@@ -88,6 +93,16 @@ export class LocalStore implements Store {
         name: nameOf(name),
         joinedAt: Date.now(),
       });
+    });
+  }
+  async kickPlayer(id: string, targetId: string) {
+    await this.mutate(id, (s) => {
+      s.room = kickTransition(
+        s.room,
+        this.playerId,
+        targetId,
+        s.results.some((r) => r.roundId === s.room.roundId),
+      );
     });
   }
   async read(id: string): Promise<RoomSnapshot> {

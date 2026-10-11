@@ -196,3 +196,124 @@ it("旧版の主役配置中ルームから提出しても進行できる", asyn
   );
   expect((await store.read("r")).ready).toContain("a");
 });
+it("参加者がホストをキックし、退出者の読み書き・再参加を拒否する", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const admin = ctx.firestore();
+    await updateDoc(doc(admin, "rooms/r"), {
+      players: [...room.players, { id: "c", name: "c", joinedAt: 3 }],
+      memberIds: ["a", "b", "c"],
+      roster: ["a", "b", "c"],
+      phase: "predict",
+      candidates: Array.from({ length: 6 }, (_, i) => ({
+        id: "w" + i,
+        text: "w" + i,
+        ownerId: "a",
+        slot: i,
+      })),
+    });
+  });
+  const { FirebaseStore } = await import("../../src/store/firebase");
+  const b = new FirebaseStore(db("b"), "b");
+  await b.kickPlayer("r", "a");
+  const snapshot = await b.read("r");
+  expect(snapshot.room.hostId).toBe("b");
+  expect(snapshot.room.phase).toBe("theme");
+  expect(snapshot.room.roundId).toBe("2");
+  expect(snapshot.room.roster).toEqual(["b", "c"]);
+  await assertFails(getDoc(doc(db("a"), "rooms/r")));
+  await assertFails(
+    setDoc(doc(db("a"), "rooms/r/rounds/2/drafts/a"), {
+      playerId: "a",
+      words: ["x", "y", "z"],
+      submitted: true,
+    }),
+  );
+  await expect(
+    new FirebaseStore(db("a"), "a").kickPlayer("r", "b"),
+  ).rejects.toThrow();
+  await expect(b.kickPlayer("r", "b")).rejects.toThrow();
+  await new FirebaseStore(db("c"), "c").kickPlayer("r", "b");
+  expect((await getDoc(doc(db("c"), "rooms/r"))).data()?.phase).toBe(
+    "finished",
+  );
+});
+it("キックに便乗した状態改ざんとロビーへの再参加を拒否する", async () => {
+  await env.withSecurityRulesDisabled((c) =>
+    updateDoc(doc(c.firestore(), "rooms/r"), {
+      phase: "lobby",
+      roster: [],
+      roundId: "0",
+      departed: [],
+      departedIds: [],
+      roundIds: [],
+    }),
+  );
+  const { FirebaseStore } = await import("../../src/store/firebase");
+  const a = new FirebaseStore(db("a"), "a");
+  await assertFails(
+    updateDoc(doc(db("b"), "rooms/r"), { hostId: "b", phase: "finished" }),
+  );
+  await a.kickPlayer("r", "b");
+  await assertFails(getDoc(doc(db("b"), "rooms/r")));
+  await expect(
+    new FirebaseStore(db("b"), "b").joinRoom("r", "b"),
+  ).rejects.toThrow();
+  await assertFails(
+    updateDoc(doc(db("b"), "rooms/r"), {
+      players: room.players,
+      memberIds: ["a", "b"],
+    }),
+  );
+});
+it.each([0, 1])("旧ルームのラウンド%dから通常の次へ進める", async (index) => {
+  await env.withSecurityRulesDisabled(async (c) => {
+    const db = c.firestore(),
+      n = String(index + 1),
+      hero = room.roster[index];
+    await updateDoc(doc(db, "rooms/r"), {
+      phase: "reveal",
+      roundIndex: index,
+      roundId: n,
+    });
+    await setDoc(doc(db, `rooms/r/rounds/${n}/answers/${hero}`), {
+      placement: { "a-0": "S" },
+      submittedAt: 1,
+    });
+    await setDoc(doc(db, `rooms/r/rounds/${n}/result/public`), {
+      roundId: n,
+      theme: room.theme,
+      candidates: room.candidates,
+      correct: { "a-0": "S" },
+      protagonistId: hero,
+    });
+  });
+  const { FirebaseStore } = await import("../../src/store/firebase");
+  const store = new FirebaseStore(db("a"), "a");
+  await store.advance("r", { type: "next" });
+  const s = await store.read("r");
+  expect(s.room.phase).toBe(index === 0 ? "theme" : "finished");
+  expect(s.room.roundIds).toEqual(["1", "2"]);
+});
+it.each([
+  ["a", "f"],
+  ["f", "a"],
+])("6人のルームでも%sが%sをキックできる", async (actor, target) => {
+  await env.withSecurityRulesDisabled((c) =>
+    updateDoc(doc(c.firestore(), "rooms/r"), {
+      players: ["a", "b", "c", "d", "e", "f"].map((id, i) => ({
+        id,
+        name: id,
+        joinedAt: i,
+      })),
+      memberIds: ["a", "b", "c", "d", "e", "f"],
+      roster: ["a", "b", "c", "d", "e", "f"],
+      roundIndex: 3,
+      roundId: "4",
+      phase: "predict",
+    }),
+  );
+  const { FirebaseStore } = await import("../../src/store/firebase");
+  const store = new FirebaseStore(db(actor), actor);
+  await store.kickPlayer("r", target);
+  expect((await store.read("r")).room.players).toHaveLength(5);
+});

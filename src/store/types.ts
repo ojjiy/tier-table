@@ -14,6 +14,7 @@ export interface Store {
   playerId: string;
   createRoom(name: string): Promise<string>;
   joinRoom(id: string, name: string): Promise<void>;
+  kickPlayer(id: string, targetId: string): Promise<void>;
   read(id: string): Promise<RoomSnapshot>;
   subscribe(
     id: string,

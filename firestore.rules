@@ -11,12 +11,39 @@ service cloud.firestore {
   function done(r,n,i){return i>=room(r).roster.size() || exists(/databases/$(database)/documents/rooms/$(r)/rounds/$(n)/answers/$(room(r).roster[i]));}
   function allDone(r,n){return done(r,n,0)&&done(r,n,1)&&done(r,n,2)&&done(r,n,3)&&done(r,n,4)&&done(r,n,5);}
   function published(r,n){return exists(/databases/$(database)/documents/rooms/$(r)/rounds/$(n)/result/public);}
+
+  function position(ids,id){return ids.size()>0&&ids[0]==id?0:ids.size()>1&&ids[1]==id?1:ids.size()>2&&ids[2]==id?2:ids.size()>3&&ids[3]==id?3:ids.size()>4&&ids[4]==id?4:ids.size()>5&&ids[5]==id?5:-1;}
+  function legacyIds(i){return i==0?['1']:i==1?['1','2']:i==2?['1','2','3']:i==3?['1','2','3','4']:i==4?['1','2','3','4','5']:['1','2','3','4','5','6'];}
+  function history(d){return d.get('roundIds',legacyIds(d.roundIndex));}
+  function nextRound(d){let ids=history(d);return string(int(ids[ids.size()-1])+1);}
+  function validKick(r){
+   let old=resource.data;
+   let n=request.resource.data;
+   let removed=old.memberIds.removeAll(n.memberIds);
+   let target=removed.size()==1?removed[0]:'';
+   let pi=position(old.memberIds,target);
+   let ri=position(old.roster,target);
+   let complete=old.phase=='reveal'&&published(r,old.roundId);
+   let index=old.roundIndex+(complete?1:0)-((ri<old.roundIndex||(complete&&ri==old.roundIndex))?1:0);
+   let phase=n.memberIds.size()<2||index>=n.roster.size()?'finished':'theme';
+   return signed()&&request.auth.uid in old.memberIds&&old.phase!='finished'&&removed.size()==1&&target!=request.auth.uid&&pi>=0
+    &&n.memberIds==old.memberIds.removeAll([target])&&n.memberIds.size()>=1
+    &&n.players==old.players.removeAll([old.players[pi]])
+    &&n.departed==old.get('departed',[]).concat([old.players[pi]])&&n.departedIds==old.get('departedIds',[]).concat([target])
+    &&n.hostId==(old.hostId==target?n.memberIds[0]:old.hostId)
+    &&((old.phase=='lobby'&&n.diff(old).affectedKeys().hasOnly(['players','memberIds','departed','departedIds','hostId']))
+      ||(old.phase!='lobby'&&ri>=0&&n.roster==old.roster.removeAll([target])&&n.roundIndex==index&&n.phase==phase
+       &&n.candidates==[]&&n.rejected==[]&&n.predictionDeadline==null&&n.theme==(complete?'':old.theme)
+       &&n.roundId==(phase=='theme'?nextRound(old):old.roundId)
+       &&n.roundIds==(phase=='theme'?history(old).concat([nextRound(old)]):history(old))
+       &&n.diff(old).affectedKeys().hasOnly(['players','memberIds','departed','departedIds','hostId','roster','roundIndex','phase','candidates','rejected','predictionDeadline','theme','roundId','roundIds'])));
+  }
   match /rooms/{r} {
-   allow get: if signed() && (resource.data.phase=='lobby' || request.auth.uid in resource.data.memberIds);
+   allow get: if signed() && ((resource.data.phase=='lobby' && !(request.auth.uid in resource.data.get('departedIds',[]))) || request.auth.uid in resource.data.memberIds);
    allow list,delete: if false;
    allow create: if signed() && request.resource.data.hostId==request.auth.uid && request.resource.data.memberIds==[request.auth.uid] && request.resource.data.players.size()==1 && request.resource.data.players[0].id==request.auth.uid && request.resource.data.phase=='lobby' && request.resource.data.roster==[];
    allow update: if signed() && (
-    (resource.data.phase=='lobby' && request.resource.data.phase=='lobby' && resource.data.players.size()<6 && !(request.auth.uid in resource.data.memberIds)
+    (resource.data.phase=='lobby' && request.resource.data.phase=='lobby' && resource.data.players.size()<6 && !(request.auth.uid in resource.data.memberIds) && !(request.auth.uid in resource.data.get('departedIds',[]))
       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players','memberIds'])
       && request.resource.data.memberIds==resource.data.memberIds.concat([request.auth.uid])
       && request.resource.data.players==resource.data.players.concat([request.resource.data.players[resource.data.players.size()]])
@@ -26,15 +53,17 @@ service cloud.firestore {
       && request.resource.data.players[resource.data.players.size()].name.size()<=20)
     || (request.auth.uid==resource.data.hostId && request.resource.data.hostId==resource.data.hostId
       && request.resource.data.players==resource.data.players && request.resource.data.memberIds==resource.data.memberIds
-      && ((resource.data.phase=='lobby' && request.resource.data.phase=='theme' && resource.data.memberIds.size()>=2 && request.resource.data.roster==resource.data.memberIds && request.resource.data.roundIndex==0 && request.resource.data.roundId=='1')
+      && request.resource.data.get('departed',[])==resource.data.get('departed',[]) && request.resource.data.get('departedIds',[])==resource.data.get('departedIds',[])
+      && ((resource.data.phase=='lobby' && request.resource.data.phase=='theme' && resource.data.memberIds.size()>=2 && request.resource.data.roster==resource.data.memberIds && request.resource.data.roundIndex==0 && request.resource.data.roundId=='1' && request.resource.data.roundIds==['1'])
        || (resource.data.phase=='theme' && request.resource.data.phase=='collect' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase','theme']) && request.resource.data.theme is string && request.resource.data.theme.size()>0 && request.resource.data.theme.size()<=100)
        || (resource.data.phase=='collect' && request.resource.data.phase in ['collect','arrange','predict'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase','candidates','rejected']) && (request.resource.data.phase=='collect' || (request.resource.data.candidates.size()>=5 && request.resource.data.candidates.size()<=10)))
        || (resource.data.phase=='predict' && request.resource.data.phase=='reveal' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase']) && allDone(r,resource.data.roundId))
-       || (resource.data.phase=='reveal' && published(r,resource.data.roundId) && request.resource.data.roundIndex==resource.data.roundIndex+1 && request.resource.data.roundId==string(request.resource.data.roundIndex+1) && request.resource.data.roster==resource.data.roster && request.resource.data.phase==(request.resource.data.roundIndex>=resource.data.roster.size()?'finished':'theme') && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['roundIndex','roundId','phase','theme','candidates','predictionDeadline','rejected']))))
+       || (resource.data.phase=='reveal' && published(r,resource.data.roundId) && request.resource.data.roundIndex==resource.data.roundIndex+1 && request.resource.data.roundId==(request.resource.data.roundIndex>=resource.data.roster.size()?resource.data.roundId:nextRound(resource.data)) && request.resource.data.roundIds==(request.resource.data.roundIndex>=resource.data.roster.size()?history(resource.data):history(resource.data).concat([nextRound(resource.data)])) && request.resource.data.roster==resource.data.roster && request.resource.data.phase==(request.resource.data.roundIndex>=resource.data.roster.size()?'finished':'theme') && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['roundIndex','roundId','roundIds','phase','theme','candidates','predictionDeadline','rejected']))))
     || (request.auth.uid==resource.data.roster[resource.data.roundIndex] && resource.data.phase=='arrange' && request.resource.data.phase=='predict'
       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase','predictionDeadline'])
       && request.resource.data.predictionDeadline==null
       && existsAfter(/databases/$(database)/documents/rooms/$(r)/rounds/$(resource.data.roundId)/answers/$(request.auth.uid)))
+    || validKick(r)
    );
    match /rounds/{n}/drafts/{uid} {
     allow read: if member(r);

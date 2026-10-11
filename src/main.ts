@@ -218,7 +218,21 @@ function connect() {
   unsubscribe?.();
   screenKey = "";
   shell();
-  unsubscribe = store.subscribe(roomId, update, showError);
+  unsubscribe = store.subscribe(roomId, update, (e) => {
+    if ((e as Error & { code?: string }).code === "room-removed") {
+      unsubscribe?.();
+      disposed();
+      snapshot = undefined;
+      screenKey = "removed";
+      main.replaceChildren(
+        jp("h1", "ルームから退出しました"),
+        jp("p", "ほかの参加者によって退出処理が行われました。", "lead"),
+        button("ホームへ", () => {
+          location.href = location.pathname;
+        }),
+      );
+    } else showError(e);
+  });
 }
 function localKey(kind: string) {
   return `tier-${kind}:${roomId}:${snapshot!.room.roundId}:${store.playerId}`;
@@ -236,7 +250,7 @@ function update(s: RoomSnapshot) {
   const hero = r.roster[r.roundIndex];
   const own = s.drafts.find((d) => d.playerId === store.playerId);
   const rejected = r.rejected.filter((x) => x.playerId === store.playerId);
-  const k = `${r.phase}:${r.roundId}:${Boolean(s.answer)}:${s.results.some((x) => x.roundId === r.roundId)}:${JSON.stringify(rejected)}`;
+  const k = `${r.hostId}:${r.phase}:${r.roundId}:${Boolean(s.answer)}:${s.results.some((x) => x.roundId === r.roundId)}:${JSON.stringify(rejected)}`;
   if (k !== screenKey) {
     disposed();
     disposed = () => {};
@@ -249,7 +263,15 @@ function update(s: RoomSnapshot) {
     shell();
     renderPhase(s);
   }
-  renderPlayers(players, s, store.playerId);
+  renderPlayers(players, s, store.playerId, (target) => {
+    const name = r.players.find((p) => p.id === target)?.name ?? "参加者";
+    if (
+      window.confirm(
+        `${name}さんをキックしますか？ 未完了のラウンドは残ったメンバーでやり直します。`,
+      )
+    )
+      void run(() => store.kickPlayer(roomId, target));
+  });
   actionsPanel.replaceChildren();
   const phaseIndex =
     (
@@ -364,7 +386,7 @@ function renderPhase(s: RoomSnapshot) {
     );
     if (isHost) {
       const f = field("今回のテーマ", "theme", 100, "例：休日に食べたいもの");
-      f.input.value = restore(localKey("theme"), "");
+      f.input.value = restore(localKey("theme"), r.theme);
       f.input.oninput = () =>
         sessionStorage.setItem(
           localKey("theme"),

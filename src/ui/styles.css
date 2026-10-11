@@ -1222,3 +1222,43 @@ footer span {
     padding: 6px 8px;
   }
 }
+.tier-S .tier-label {
+  background: #f38b8b;
+  color: #3b2026;
+}
+.tier-A .tier-label {
+  background: #efb27c;
+  color: #3b2a1c;
+}
+.tier-B .tier-label {
+  background: #eedb7e;
+  color: #39341c;
+}
+.tier-C .tier-label {
+  background: #a8d49c;
+  color: #213b25;
+}
+.tier-D .tier-label {
+  background: #94cddc;
+  color: #19343b;
+}
+.kick-button {
+  border: 1px solid #784454;
+  background: transparent;
+  color: #e8b3c1;
+  border-radius: 5px;
+  padding: 4px 7px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.kick-button:hover {
+  background: #5b1b30;
+}
+.player {
+  max-width: 100%;
+  min-width: 0;
+}
+.player > span:not(.avatar) {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

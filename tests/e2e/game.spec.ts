@@ -330,3 +330,117 @@ test("複数の指が触れてもドラッグの残像を残さない", async ({
   await expect(page.locator(".dragging")).toHaveCount(0);
   await cdp.detach();
 });
+
+test("キック後にホストを引き継ぎ、残った人数で続行して得点を保持する", async ({
+  context,
+  page: a,
+}) => {
+  await a.goto("/");
+  await a.getByLabel("あなたの名前").fill("ホストA");
+  await a.getByRole("button", { name: "ルームをつくる" }).click();
+  await expect(
+    a.getByRole("heading", { name: "みんなを待っています" }),
+  ).toBeVisible();
+  const contexts = process.env.TEST_FIREBASE
+    ? await Promise.all([
+        context.browser()!.newContext(),
+        context.browser()!.newContext(),
+      ])
+    : [context, context];
+  const b = await contexts[0].newPage(),
+    c = await contexts[1].newPage();
+  for (const [p, name] of [
+    [b, "参加者B"],
+    [c, "参加者C"],
+  ] as const) {
+    await p.goto(a.url());
+    await p.getByLabel("あなたの名前").fill(name);
+    await p.getByRole("button", { name: "ルームに参加" }).click();
+  }
+  await expect(c.locator(".players .player")).toHaveCount(3);
+  await a.getByRole("button", { name: "ゲームをはじめる" }).click();
+  await a.getByLabel("今回のテーマ", { exact: true }).fill("好きな果物");
+  await a.getByRole("button", { name: "ワード募集をはじめる" }).click();
+  await words(a, ["りんご", "みかん"]);
+  await words(b, ["ぶどう", "桃"]);
+  await words(c, ["梨", "柿"]);
+  await a.getByRole("button", { name: "配置へ進む" }).click();
+  for (const p of [b, c, a]) await place(p);
+  await expect(a.getByText("6点", { exact: true }).first()).toBeVisible();
+  await a.getByRole("button", { name: "次のラウンドへ" }).click();
+  c.once("dialog", (d) => d.dismiss());
+  await c.getByRole("button", { name: "ホストAをキック", exact: true }).click();
+  await expect(c.locator(".players .player")).toHaveCount(3);
+  c.on("dialog", (d) => d.accept());
+  await c.getByRole("button", { name: "ホストAをキック", exact: true }).click();
+  await expect(
+    a.getByRole("heading", { name: "ルームから退出しました" }),
+  ).toBeVisible();
+  await expect(b.getByLabel("今回のテーマ", { exact: true })).toBeVisible();
+  await expect(b.locator(".players .player")).toHaveCount(2);
+  await b.getByLabel("今回のテーマ", { exact: true }).fill("残った二人");
+  await b.getByRole("button", { name: "ワード募集をはじめる" }).click();
+  await expect(c.getByLabel("ワード3", { exact: true })).toBeVisible();
+  await words(b, ["犬", "猫", "うさぎ"]);
+  await words(c, ["鳥", "馬", "羊"]);
+  await b.getByRole("button", { name: "配置へ進む" }).click();
+  for (const p of [c, b]) await place(p);
+  await expect(b.getByRole("heading", { name: "答え合わせ" })).toBeVisible();
+  b.on("dialog", (d) => d.accept());
+  await b.getByRole("button", { name: "参加者Cをキック", exact: true }).click();
+  await expect(
+    c.getByRole("heading", { name: "ルームから退出しました" }),
+  ).toBeVisible();
+  await expect(b.getByRole("heading", { name: "みんなの結果" })).toBeVisible();
+  await expect(b.locator(".score-list")).toContainText("12点");
+  await expect(b.locator(".score-list")).toContainText("参加者C");
+  await b.setViewportSize({ width: 320, height: 780 });
+  expect(
+    await b.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBe(true);
+  if (process.env.TEST_FIREBASE) for (const ctx of contexts) await ctx.close();
+});
+test("開始待ちでもキックでき、新しいホストが参加者を待てる", async ({
+  context,
+  page: a,
+}) => {
+  await a.goto("/");
+  await a.getByLabel("あなたの名前").fill("待機ホスト");
+  await a.getByRole("button", { name: "ルームをつくる" }).click();
+  await expect(
+    a.getByRole("heading", { name: "みんなを待っています" }),
+  ).toBeVisible();
+  const guestContext = process.env.TEST_FIREBASE
+    ? await context.browser()!.newContext()
+    : context;
+  const b = await guestContext.newPage();
+  await b.goto(a.url());
+  await b.getByLabel("あなたの名前").fill("待機ゲスト");
+  await b.getByRole("button", { name: "ルームに参加" }).click();
+  b.on("dialog", (d) => d.accept());
+  await b
+    .getByRole("button", { name: "待機ホストをキック", exact: true })
+    .click();
+  await expect(
+    a.getByRole("heading", { name: "ルームから退出しました" }),
+  ).toBeVisible();
+  await expect(
+    b.getByRole("button", { name: "ゲームをはじめる" }),
+  ).toBeDisabled();
+  const newcomerContext = process.env.TEST_FIREBASE
+    ? await context.browser()!.newContext()
+    : context;
+  const c = await newcomerContext.newPage();
+  await c.goto(b.url());
+  await c.getByLabel("あなたの名前").fill("新しい参加者");
+  await c.getByRole("button", { name: "ルームに参加" }).click();
+  await expect(
+    b.getByRole("button", { name: "ゲームをはじめる" }),
+  ).toBeEnabled();
+  await b.getByRole("button", { name: "ゲームをはじめる" }).click();
+  await expect(b.getByLabel("今回のテーマ", { exact: true })).toBeVisible();
+  if (process.env.TEST_FIREBASE) {
+    await guestContext.close();
+    await newcomerContext.close();
+  }
+});

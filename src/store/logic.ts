@@ -23,6 +23,9 @@ export function newRoom(id: string, playerId: string, name: string): Room {
     id,
     hostId: playerId,
     players: [{ id: playerId, name: nameOf(name), joinedAt: Date.now() }],
+    departed: [],
+    departedIds: [],
+    roundIds: [],
     roster: [],
     phase: "lobby",
     roundId: "0",
@@ -34,10 +37,60 @@ export function newRoom(id: string, playerId: string, name: string): Room {
   };
 }
 export function member(room: Room, id: string) {
-  requireThat(
-    room.players.some((p) => p.id === id),
-    "このルームに参加していません",
+  if (!room.players.some((p) => p.id === id))
+    throw Object.assign(new Error("このルームには参加できません"), {
+      code: "room-removed",
+    });
+}
+export function roundHistory(room: Room): string[] {
+  return (
+    room.roundIds ??
+    Array.from(
+      { length: room.roster.length ? room.roundIndex + 1 : 0 },
+      (_, i) => String(i + 1),
+    )
   );
+}
+function allocateRound(room: Room) {
+  const ids = roundHistory(room);
+  room.roundId = String(Math.max(0, ...ids.map(Number)) + 1);
+  room.roundIds = [...ids, room.roundId];
+}
+export function kickTransition(
+  room: Room,
+  actor: string,
+  target: string,
+  completed: boolean,
+): Room {
+  member(room, actor);
+  requireThat(actor !== target, "自分自身はキックできません");
+  requireThat(room.phase !== "finished", "終了したゲームではキックできません");
+  const player = room.players.find((p) => p.id === target);
+  requireThat(player, "対象の参加者は既に退出しています");
+  const next = structuredClone(room);
+  next.players = room.players.filter((p) => p.id !== target);
+  next.departed = [...(room.departed ?? []), player];
+  next.departedIds = [...(room.departedIds ?? []), target];
+  if (room.hostId === target) next.hostId = next.players[0].id;
+  if (room.phase === "lobby") return next;
+  const removedIndex = room.roster.indexOf(target);
+  requireThat(removedIndex >= 0, "参加者情報を確認してください");
+  next.roster = room.roster.filter((id) => id !== target);
+  next.roundIndex = room.roundIndex - (removedIndex < room.roundIndex ? 1 : 0);
+  if (completed)
+    next.roundIndex =
+      room.roundIndex + 1 - (removedIndex <= room.roundIndex ? 1 : 0);
+  next.phase =
+    next.players.length < 2 || next.roundIndex >= next.roster.length
+      ? "finished"
+      : "theme";
+  next.roundIds = roundHistory(room);
+  if (next.phase === "theme") allocateRound(next);
+  next.candidates = [];
+  next.predictionDeadline = null;
+  next.rejected = [];
+  if (completed) next.theme = "";
+  return next;
 }
 export function current(room: Room, roundId: string) {
   requireThat(
@@ -115,6 +168,7 @@ export function transition(
       );
       next.roster = room.players.map((p) => p.id);
       next.roundId = "1";
+      next.roundIds = ["1"];
       next.phase = "theme";
       break;
     case "theme":
@@ -157,9 +211,10 @@ export function transition(
           results.some((r) => r.roundId === room.roundId),
         "正解の公開を待ってください",
       );
+      next.roundIds = roundHistory(room);
       next.roundIndex++;
       next.phase = next.roundIndex >= room.roster.length ? "finished" : "theme";
-      next.roundId = String(next.roundIndex + 1);
+      if (next.phase === "theme") allocateRound(next);
       next.theme = "";
       next.candidates = [];
       next.predictionDeadline = null;

@@ -2,7 +2,12 @@ import { el, jp, button } from "./dom";
 import { TIERS, type Placement, type Word } from "../domain/types";
 import type { RoomSnapshot } from "../store/types";
 import { rankScores } from "../domain/game";
-export function renderPlayers(root: HTMLElement, s: RoomSnapshot, me: string) {
+export function renderPlayers(
+  root: HTMLElement,
+  s: RoomSnapshot,
+  me: string,
+  kick?: (id: string) => void,
+) {
   root.replaceChildren();
   for (const p of s.room.players) {
     const item = el("div", undefined, "player");
@@ -11,6 +16,11 @@ export function renderPlayers(root: HTMLElement, s: RoomSnapshot, me: string) {
     item.append(avatar, name);
     if (p.id === me) item.append(el("small", "あなた"));
     if (p.id === s.room.hostId) item.append(el("small", "ホスト"));
+    if (p.id !== me && s.room.phase !== "finished" && kick) {
+      const remove = button("キック", () => kick(p.id), "kick-button");
+      remove.setAttribute("aria-label", `${p.name}をキック`);
+      item.append(remove);
+    }
     root.append(item);
   }
 }
@@ -58,7 +68,8 @@ export function renderResults(
   next: () => void,
 ) {
   if (final) {
-    const totals = Object.fromEntries(s.room.roster.map((id) => [id, 0]));
+    const allPlayers = [...s.room.players, ...(s.room.departed ?? [])];
+    const totals = Object.fromEntries(allPlayers.map((p) => [p.id, 0]));
     for (const r of s.results)
       for (const [id, points] of Object.entries(r.scores))
         totals[id] = (totals[id] ?? 0) + points;
@@ -67,10 +78,7 @@ export function renderResults(
       const row = el("div", undefined, "score-row");
       row.append(
         el("span", String(p.rank).padStart(2, "0"), "rank"),
-        el(
-          "strong",
-          s.room.players.find((x) => x.id === p.playerId)?.name ?? "",
-        ),
+        el("strong", allPlayers.find((x) => x.id === p.playerId)?.name ?? ""),
         el("span", `${p.score}点`, "points"),
       );
       list.append(row);

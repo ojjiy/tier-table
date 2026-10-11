@@ -40,6 +40,8 @@ import {
   checkSubmission,
   checkAnswer,
   transition,
+  kickTransition,
+  roundHistory,
 } from "./logic";
 interface PublicResult {
   roundId: string;
@@ -98,6 +100,10 @@ export class FirebaseStore implements Store {
       const s = await t.get(this.ref(id));
       requireThat(s.exists(), "ルームが見つかりません");
       const room = s.data() as Room;
+      requireThat(
+        !room.departed?.some((p) => p.id === this.playerId),
+        "このルームから退出しています",
+      );
       if (room.players.some((p) => p.id === this.playerId)) return;
       requireThat(
         room.phase === "lobby" && room.players.length < 6,
@@ -136,12 +142,7 @@ export class FirebaseStore implements Store {
         ready: true,
       });
     const results: RoundResult[] = [];
-    for (
-      let i = 0;
-      i <= Math.min(room.roundIndex, room.roster.length - 1);
-      i++
-    ) {
-      const n = String(i + 1);
+    for (const n of roundHistory(room)) {
       const pub = await getDoc(this.rref(id, n, "result", "public"));
       if (!pub.exists() || pub.metadata.hasPendingWrites) continue;
       const p = pub.data() as PublicResult;
@@ -176,10 +177,30 @@ export class FirebaseStore implements Store {
       results,
     };
   }
+  async kickPlayer(id: string, targetId: string) {
+    await runTransaction(this.db, async (t) => {
+      const live = await t.get(this.ref(id));
+      requireThat(live.exists(), "ルームが見つかりません");
+      const room = live.data() as Room;
+      const result = await t.get(
+        this.rref(id, room.roundId, "result", "public"),
+      );
+      const next = kickTransition(
+        room,
+        this.playerId,
+        targetId,
+        result.exists(),
+      );
+      t.set(this.ref(id), {
+        ...next,
+        memberIds: next.players.map((p) => p.id),
+      });
+    });
+  }
   subscribe(
     id: string,
     listener: (s: RoomSnapshot) => void,
-    onError: (e: Error) => void,
+    handler: (e: Error) => void,
   ) {
     let active = true,
       round = "",
@@ -187,6 +208,29 @@ export class FirebaseStore implements Store {
       running = false,
       dirty = false;
     let children: (() => void)[] = [];
+    const onError = (error: Error) => {
+      if (!active) return;
+      if ((error as Error & { code?: string }).code !== "permission-denied") {
+        handler(error);
+        return;
+      }
+      void this.room(id)
+        .then((room) => {
+          member(room, this.playerId);
+          if (active) handler(error);
+        })
+        .catch((e) => {
+          if (!active) return;
+          const code = (e as { code?: string }).code;
+          handler(
+            code === "permission-denied" || code === "room-removed"
+              ? Object.assign(new Error("ルームから退出しました"), {
+                  code: "room-removed",
+                })
+              : error,
+          );
+        });
+    };
     const refresh = () => {
       dirty = true;
       if (scheduled || running) return;

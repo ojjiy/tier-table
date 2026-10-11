@@ -35,6 +35,9 @@ export interface Room {
   id: string;
   hostId: string;
   players: Player[];
+  departed?: Player[];
+  departedIds?: string[];
+  roundIds?: string[];
   roster: string[];
   phase: Phase;
   roundId: string;
