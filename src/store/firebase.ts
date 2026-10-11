@@ -1,0 +1,307 @@
+import { initializeApp } from "firebase/app";
+import {
+  getAuth,
+  setPersistence,
+  browserSessionPersistence,
+  signInAnonymously,
+  connectAuthEmulator,
+} from "firebase/auth";
+import {
+  getFirestore,
+  doc,
+  collection,
+  getDoc,
+  getDocs,
+  setDoc,
+  onSnapshot,
+  runTransaction,
+  writeBatch,
+  connectFirestoreEmulator,
+  type Firestore,
+} from "firebase/firestore";
+import type { Store, RoomSnapshot, HostAction } from "./types";
+import type {
+  Room,
+  Draft,
+  Answer,
+  RoundResult,
+  Placement,
+  Word,
+} from "../domain/types";
+import { scoreRound } from "../domain/game";
+import {
+  newRoom,
+  nameOf,
+  member,
+  current,
+  requireThat,
+  checkDraft,
+  checkSubmission,
+  checkAnswer,
+  transition,
+} from "./logic";
+interface PublicResult {
+  roundId: string;
+  theme: string;
+  candidates: Word[];
+  correct: Placement;
+  protagonistId: string;
+}
+export async function firebaseStore(): Promise<Store> {
+  const e = import.meta.env;
+  const app = initializeApp({
+    apiKey: e.VITE_FIREBASE_API_KEY,
+    authDomain: e.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: e.VITE_FIREBASE_PROJECT_ID,
+    appId: e.VITE_FIREBASE_APP_ID,
+  });
+  const auth = getAuth(app);
+  await setPersistence(auth, browserSessionPersistence);
+  const db = getFirestore(app);
+  if (e.VITE_USE_EMULATORS === "true") {
+    connectAuthEmulator(auth, "http://127.0.0.1:9099", {
+      disableWarnings: true,
+    });
+    connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  }
+  await auth.authStateReady();
+  const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
+  return new FirebaseStore(db, user.uid);
+}
+export class FirebaseStore implements Store {
+  mode = "firebase" as const;
+  constructor(
+    private db: Firestore,
+    public playerId: string,
+  ) {}
+  private ref(id: string) {
+    return doc(this.db, "rooms", id);
+  }
+  private rref(id: string, n: string, kind: string, uid: string) {
+    return doc(this.db, "rooms", id, "rounds", n, kind, uid);
+  }
+  private async room(id: string) {
+    const s = await getDoc(this.ref(id));
+    requireThat(s.exists(), "ルームが見つかりません");
+    return s.data() as Room;
+  }
+  async createRoom(name: string) {
+    const id = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
+    const room = newRoom(id, this.playerId, name);
+    await setDoc(this.ref(id), { ...room, memberIds: [this.playerId] });
+    return id;
+  }
+  async joinRoom(id: string, name: string) {
+    await runTransaction(this.db, async (t) => {
+      const s = await t.get(this.ref(id));
+      requireThat(s.exists(), "ルームが見つかりません");
+      const room = s.data() as Room;
+      if (room.players.some((p) => p.id === this.playerId)) return;
+      requireThat(
+        room.phase === "lobby" && room.players.length < 6,
+        "開始済み、または満員です",
+      );
+      const players = [
+        ...room.players,
+        { id: this.playerId, name: nameOf(name), joinedAt: Date.now() },
+      ];
+      t.update(this.ref(id), { players, memberIds: players.map((p) => p.id) });
+    });
+  }
+  private async list<T>(id: string, n: string, kind: string): Promise<T[]> {
+    return (
+      await getDocs(collection(this.db, "rooms", id, "rounds", n, kind))
+    ).docs.map((d) => d.data() as T);
+  }
+  async read(id: string): Promise<RoomSnapshot> {
+    const room = await this.room(id);
+    member(room, this.playerId);
+    const [drafts, own, readyDocs] = await Promise.all([
+      this.list<Draft>(id, room.roundId, "drafts"),
+      getDoc(this.rref(id, room.roundId, "answers", this.playerId)),
+      getDocs(
+        collection(this.db, "rooms", id, "rounds", room.roundId, "ready"),
+      ),
+    ]);
+    const results: RoundResult[] = [];
+    for (
+      let i = 0;
+      i <= Math.min(room.roundIndex, room.roster.length - 1);
+      i++
+    ) {
+      const n = String(i + 1);
+      const pub = await getDoc(this.rref(id, n, "result", "public"));
+      if (!pub.exists()) continue;
+      const p = pub.data() as PublicResult;
+      const answers = await getDocs(
+        collection(this.db, "rooms", id, "rounds", n, "answers"),
+      );
+      const guesses = Object.fromEntries(
+        answers.docs.map((d) => [d.id, d.data() as Answer]),
+      );
+      results.push({
+        ...p,
+        guesses,
+        scores: scoreRound(p.candidates, p.correct, guesses, p.protagonistId),
+      });
+    }
+    return {
+      room,
+      drafts,
+      answer: own.exists() ? (own.data() as Answer) : undefined,
+      ready: readyDocs.docs.map((d) => d.id),
+      results,
+    };
+  }
+  subscribe(
+    id: string,
+    listener: (s: RoomSnapshot) => void,
+    onError: (e: Error) => void,
+  ) {
+    let active = true,
+      round = "",
+      scheduled = false,
+      running = false,
+      dirty = false;
+    let children: (() => void)[] = [];
+    const refresh = () => {
+      dirty = true;
+      if (scheduled || running) return;
+      scheduled = true;
+      queueMicrotask(async () => {
+        scheduled = false;
+        if (!active) return;
+        running = true;
+        dirty = false;
+        try {
+          const s = await this.read(id);
+          if (active) listener(s);
+        } catch (e) {
+          if (active) onError(e as Error);
+        } finally {
+          running = false;
+          if (dirty && active) refresh();
+        }
+      });
+    };
+    const sub = onSnapshot(
+      this.ref(id),
+      (s) => {
+        if (!s.exists()) {
+          onError(new Error("ルームが見つかりません"));
+          return;
+        }
+        const r = s.data() as Room;
+        if (round !== r.roundId) {
+          children.forEach((u) => u());
+          round = r.roundId;
+          children = [
+            onSnapshot(
+              collection(this.db, "rooms", id, "rounds", round, "drafts"),
+              refresh,
+              onError,
+            ),
+            onSnapshot(
+              collection(this.db, "rooms", id, "rounds", round, "ready"),
+              refresh,
+              onError,
+            ),
+            onSnapshot(
+              this.rref(id, round, "result", "public"),
+              refresh,
+              onError,
+            ),
+            onSnapshot(
+              this.rref(id, round, "answers", this.playerId),
+              refresh,
+              onError,
+            ),
+          ];
+        }
+        refresh();
+      },
+      onError,
+    );
+    return () => {
+      active = false;
+      sub();
+      children.forEach((u) => u());
+    };
+  }
+  async saveDraft(id: string, n: string, draft: Draft) {
+    const room = await this.room(id);
+    checkDraft(room, this.playerId, n, draft);
+    await setDoc(this.rref(id, n, "drafts", this.playerId), draft);
+  }
+  async submitDraft(id: string, n: string, words: string[]) {
+    const room = await this.room(id);
+    current(room, n);
+    const drafts = await this.list<Draft>(id, n, "drafts");
+    checkSubmission(room, this.playerId, words, drafts);
+    await this.saveDraft(id, n, {
+      playerId: this.playerId,
+      words: words.map((w) => w.trim()),
+      submitted: true,
+    });
+  }
+  async saveAnswer(id: string, n: string, answer: Answer) {
+    const room = await this.room(id);
+    checkAnswer(room, this.playerId, n, answer.placement, Date.now());
+    const batch = writeBatch(this.db);
+    batch.set(this.rref(id, n, "answers", this.playerId), {
+      placement: answer.placement,
+      submittedAt: Date.now(),
+    });
+    if (room.phase === "arrange")
+      batch.update(this.ref(id), {
+        phase: "predict",
+        predictionDeadline: Date.now() + 180000,
+      });
+    else batch.set(this.rref(id, n, "ready", this.playerId), { ready: true });
+    await batch.commit();
+  }
+  async advance(id: string, action: HostAction) {
+    const s = await this.read(id);
+    const next = transition(
+      s.room,
+      this.playerId,
+      action,
+      s.drafts,
+      s.ready,
+      s.results,
+    );
+    await runTransaction(this.db, async (t) => {
+      const live = await t.get(this.ref(id));
+      requireThat(
+        live.exists() &&
+          live.data().phase === s.room.phase &&
+          live.data().roundId === s.room.roundId,
+        "進行が変わりました。もう一度確認してください",
+      );
+      const patch: Record<string, unknown> = {};
+      for (const key of Object.keys(next) as (keyof Room)[])
+        if (JSON.stringify(next[key]) !== JSON.stringify(s.room[key]))
+          patch[key] = next[key];
+      if (Object.keys(patch).length) t.update(this.ref(id), patch);
+    });
+  }
+  async publishCorrect(id: string, n: string) {
+    const room = await this.room(id);
+    current(room, n);
+    requireThat(
+      room.phase === "reveal" && room.roster[room.roundIndex] === this.playerId,
+      "まだ正解を公開できません",
+    );
+    const target = this.rref(id, n, "result", "public");
+    if ((await getDoc(target)).exists()) return;
+    const own = await getDoc(this.rref(id, n, "answers", this.playerId));
+    requireThat(own.exists(), "正解が保存されていません");
+    await setDoc(target, {
+      roundId: n,
+      theme: room.theme,
+      candidates: room.candidates,
+      correct: own.data().placement,
+      protagonistId: this.playerId,
+    });
+  }
+}
