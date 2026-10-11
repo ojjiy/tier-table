@@ -6,7 +6,14 @@ import {
   assertSucceeds,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, updateDoc, writeBatch } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  writeBatch,
+  deleteDoc,
+} from "firebase/firestore";
 let env: RulesTestEnvironment;
 const room = {
   id: "r",
@@ -107,9 +114,16 @@ it("予想の提出済みマーカーを偽造できない", async () => {
   });
   batch.set(doc(bdb, "rooms/r/rounds/1/ready/b"), { ready: true });
   await assertSucceeds(batch.commit());
+  await assertFails(updateDoc(doc(db("a"), "rooms/r"), { phase: "reveal" }));
+  await env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), "rooms/r/rounds/1/answers/a"), {
+      placement: { "a-0": "S" },
+      submittedAt: 1,
+    }),
+  );
   await assertSucceeds(updateDoc(doc(db("a"), "rooms/r"), { phase: "reveal" }));
 });
-it("期限後の回答を拒否し、答え合わせでのみ回答を公開", async () => {
+it("時間制限なく回答でき、全員提出までは公開しない", async () => {
   await env.withSecurityRulesDisabled(async (c) => {
     await updateDoc(doc(c.firestore(), "rooms/r"), {
       phase: "predict",
@@ -120,7 +134,8 @@ it("期限後の回答を拒否し、答え合わせでのみ回答を公開", a
       submittedAt: 1,
     });
   });
-  await assertFails(
+  await assertFails(updateDoc(doc(db("a"), "rooms/r"), { phase: "reveal" }));
+  await assertSucceeds(
     setDoc(doc(db("b"), "rooms/r/rounds/1/answers/b"), {
       placement: { "a-0": "S" },
       submittedAt: Date.now(),
@@ -149,12 +164,35 @@ it("6人でも未提出者がいる間は早期公開を拒否する", async () 
       phase: "predict",
       predictionDeadline: Date.now() + 180000,
     });
-    for (const id of ["b", "c", "d", "e"])
-      await setDoc(doc(admin, `rooms/r/rounds/1/ready/${id}`), { ready: true });
+    for (const id of ["a", "b", "c", "d", "e"])
+      await setDoc(doc(admin, `rooms/r/rounds/1/answers/${id}`), {
+        placement: { "a-0": "S" },
+        submittedAt: 1,
+      });
   });
   await assertFails(updateDoc(doc(db("a"), "rooms/r"), { phase: "reveal" }));
   await env.withSecurityRulesDisabled((ctx) =>
-    setDoc(doc(ctx.firestore(), "rooms/r/rounds/1/ready/f"), { ready: true }),
+    setDoc(doc(ctx.firestore(), "rooms/r/rounds/1/answers/f"), {
+      placement: { "a-0": "S" },
+      submittedAt: 1,
+    }),
   );
   await assertSucceeds(updateDoc(doc(db("a"), "rooms/r"), { phase: "reveal" }));
+});
+it("旧版の主役配置中ルームから提出しても進行できる", async () => {
+  await env.withSecurityRulesDisabled((c) =>
+    updateDoc(doc(c.firestore(), "rooms/r"), { phase: "arrange" }),
+  );
+  const { FirebaseStore } = await import("../../src/store/firebase");
+  const store = new FirebaseStore(db("a"), "a");
+  await store.saveAnswer("r", "1", {
+    placement: { "a-0": "S" },
+    submittedAt: Date.now(),
+  });
+  await assertSucceeds(getDoc(doc(db("a"), "rooms/r/rounds/1/ready/a")));
+  expect((await getDoc(doc(db("a"), "rooms/r"))).data()?.phase).toBe("predict");
+  await env.withSecurityRulesDisabled((c) =>
+    deleteDoc(doc(c.firestore(), "rooms/r/rounds/1/ready/a")),
+  );
+  expect((await store.read("r")).ready).toContain("a");
 });

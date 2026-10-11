@@ -10,6 +10,9 @@ import { el, jp, button, field } from "./ui/dom";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML =
   '<header class="site-header"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true"><i>S</i><i>A</i><i>B</i></span><span>みんなのティア予想<small>TIER TOGETHER</small></span></a><span id="mode" class="mode">接続中</span></header><main id="main"></main><footer>好きのちがいが、今日の話題に。<span>通話しながら遊ぶ、ティア表予想ゲーム</span></footer>';
+document
+  .querySelector(".brand > span:last-child")!
+  .firstChild!.replaceWith(jp("span", "みんなのティア予想"));
 const main = document.querySelector<HTMLElement>("#main")!;
 const mode = document.querySelector<HTMLElement>("#mode")!;
 let store: Store;
@@ -31,13 +34,7 @@ let syncTimer: ReturnType<typeof setTimeout> | undefined;
 let writeQueue = Promise.resolve();
 let wordsDirty = false;
 let autos = new Set<string>();
-const steps = [
-  "テーマ",
-  "ワード募集",
-  "主役の配置",
-  "みんなの予想",
-  "答え合わせ",
-];
+const steps = ["テーマ", "ワード募集", "配置と予想", "答え合わせ"];
 function showError(e: unknown) {
   const message = e instanceof Error ? e.message : String(e);
   if (errorBox) {
@@ -100,12 +97,10 @@ function shell() {
   errorBox.hidden = true;
   content.append(errorBox);
   const side = el("aside", undefined, "sidebar");
-  side.append(
-    el("span", "IN THIS ROOM", "eyebrow"),
-    jp("h3", "いっしょに遊ぶ人"),
-  );
   players = el("div", undefined, "players");
-  side.append(players);
+  const roster = el("section", undefined, "roster-bar");
+  roster.append(jp("h3", "参加者"), players);
+  main.append(roster);
   actionsPanel = el("div", undefined, "progress");
   side.append(
     actionsPanel,
@@ -208,8 +203,8 @@ function home(join = false) {
   const how = el("div", undefined, "how-to");
   [
     ["01", "みんなでワードを入力"],
-    ["02", "主役がティア表を作る"],
-    ["03", "好みを予想して答え合わせ"],
+    ["02", "主役もみんなも同時に配置"],
+    ["03", "正解を公開して答え合わせ"],
   ].forEach(([n, t]) => {
     const row = el("div");
     row.append(el("span", n), jp("p", t));
@@ -258,7 +253,7 @@ function update(s: RoomSnapshot) {
   actionsPanel.replaceChildren();
   const phaseIndex =
     (
-      { theme: 0, collect: 1, arrange: 2, predict: 3, reveal: 4 } as Record<
+      { theme: 0, collect: 1, arrange: 2, predict: 2, reveal: 3 } as Record<
         string,
         number
       >
@@ -290,13 +285,10 @@ function update(s: RoomSnapshot) {
   if (r.phase === "predict") {
     const status = document.querySelector("#prediction-status");
     if (status)
-      status.textContent = `${s.ready.length} / ${r.roster.length - 1} 人が予想済み`;
+      status.textContent = `${s.ready.length} / ${r.roster.length} 人が確定済み`;
     if (
       store.playerId === r.hostId &&
-      (Date.now() >= (r.predictionDeadline ?? Infinity) ||
-        r.roster
-          .filter((id) => id !== hero)
-          .every((id) => s.ready.includes(id)))
+      r.roster.every((id) => s.ready.includes(id))
     )
       auto("close", () => store.advance(roomId, { type: "close" }));
   }
@@ -503,14 +495,10 @@ function renderPhase(s: RoomSnapshot) {
   }
   if (r.phase === "arrange" || r.phase === "predict") {
     const arranging = r.phase === "arrange";
-    const editable = arranging ? hero === me : hero !== me && !s.answer;
+    const editable = !s.answer && (!arranging || hero === me);
     heading(
-      arranging ? "YOUR PERSONAL TIER" : "GUESS THEIR TIER",
-      arranging
-        ? hero === me
-          ? "あなたの好みで並べよう"
-          : "主役がティア表を作っています"
-        : "主役の好みを予想しよう",
+      hero === me ? "YOUR PERSONAL TIER" : "GUESS THEIR TIER",
+      hero === me ? "あなたの好みで並べよう" : "主役の好みを予想しよう",
       `テーマ：${r.theme}`,
     );
     if (r.rejected.length)
@@ -522,23 +510,6 @@ function renderPhase(s: RoomSnapshot) {
         ),
       );
     if (!arranging) {
-      const timer = el("div", "", "timer");
-      timer.setAttribute("aria-label", "残り時間");
-      const tick = () => {
-        const seconds = Math.max(
-          0,
-          Math.ceil(
-            ((snapshot?.room.predictionDeadline ?? 0) - Date.now()) / 1000,
-          ),
-        );
-        timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-        if (seconds === 0 && snapshot?.room.hostId === me)
-          auto("close", () => store.advance(roomId, { type: "close" }));
-      };
-      tick();
-      const interval = setInterval(tick, 500);
-      disposed = () => clearInterval(interval);
-      content.append(timer);
       const status = el("p", "", "hint");
       status.id = "prediction-status";
       content.append(status);
@@ -548,11 +519,17 @@ function renderPhase(s: RoomSnapshot) {
       let placement = restore<Placement>(key, {});
       const editor = el("div");
       let send: HTMLButtonElement;
-      createPlacementEditor(editor, r.candidates, placement, (p) => {
-        placement = p;
-        sessionStorage.setItem(key, JSON.stringify(p));
-        send.disabled = !completePlacement(r.candidates, p);
-      });
+      const placementEditor = createPlacementEditor(
+        editor,
+        r.candidates,
+        placement,
+        (p) => {
+          placement = p;
+          sessionStorage.setItem(key, JSON.stringify(p));
+          send.disabled = !completePlacement(r.candidates, p);
+        },
+      );
+      disposed = () => placementEditor.destroy();
       send = button("配置を確定", () => {
         void run(async () => {
           await store.saveAnswer(roomId, r.roundId, {
@@ -568,7 +545,7 @@ function renderPhase(s: RoomSnapshot) {
         jp(
           "p",
           s.answer && !arranging
-            ? "送信しました。みんなの予想がそろったら答え合わせ！"
+            ? "確定しました。主役を含む全員の確定を待っています。"
             : "いまは待機中です。主役の意外な好みを想像してみよう。",
           "notice",
         ),

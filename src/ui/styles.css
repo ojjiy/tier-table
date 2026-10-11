@@ -815,3 +815,410 @@ footer span {
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
+/* Velvet theatre palette */
+:root {
+  color-scheme: dark;
+  --ink: #f4ede4;
+  --muted: #b7a9ab;
+  --line: #443037;
+  --green: #b51636;
+  --paper: #181316;
+  color: #f4ede4;
+  background: #0d0b0e;
+  font-size: 17px;
+}
+body {
+  background:
+    radial-gradient(ellipse at 95% 5%, #5c11244d 0, transparent 43%),
+    radial-gradient(ellipse at 0 0, #4e0f2040 0, transparent 35%), #0d0b0e;
+}
+.site-header {
+  border-bottom-color: #54303b;
+}
+.brand {
+  font-size: 22px;
+}
+.brand small {
+  font-size: 11px;
+  color: #c5a9ae;
+}
+.brand-icon i {
+  background: #b71c3a;
+  color: #fff;
+}
+.brand-icon i:nth-child(2) {
+  background: #8e1b33;
+}
+.brand-icon i:nth-child(3) {
+  background: #62182b;
+}
+.mode,
+.mode.local {
+  background: #28191f;
+  border-color: #60404b;
+  font-size: 13px;
+  color: #ead4da;
+}
+.mode:before {
+  color: #df4260;
+}
+.mode.local:before {
+  color: #bda37b;
+}
+.eyebrow {
+  color: #c3a6ae;
+  font-size: 12px;
+}
+.lead {
+  color: #c6b9ba;
+  font-size: 17px;
+}
+.hint {
+  color: #c0b0b4;
+  font-size: 15px;
+}
+.paper {
+  background: linear-gradient(145deg, #21191e, #151216);
+  border-color: #4a2c38;
+  box-shadow: 0 12px 35px #0005;
+}
+.join-panel h2 {
+  font-size: 27px;
+}
+.field {
+  font-size: 16px;
+}
+.field input {
+  background: #110e12;
+  border-color: #5c3b48;
+  color: #f9f1ec;
+  font-size: 17px;
+  padding: 15px;
+}
+.field input::placeholder {
+  color: #9c8890;
+}
+input:focus {
+  outline-color: #da4564;
+}
+.primary,
+.secondary {
+  font-size: 17px;
+  padding: 15px 24px;
+  border-color: #c12646;
+}
+.primary {
+  background: #a20d2d;
+}
+.primary:hover:not(:disabled) {
+  background: #c11c40;
+}
+.secondary {
+  color: #f5ccd4;
+  background: #32141f;
+}
+.secondary:hover:not(:disabled) {
+  background: #4f192a;
+}
+.text-button {
+  font-size: 15px;
+  color: #e5b2bf;
+}
+.notice {
+  background: #291b20;
+  border-color: #60404a;
+  color: #e0c2bb;
+  font-size: 15px;
+}
+.notice.error {
+  background: #3b1420;
+  border-color: #b43652;
+  color: #ffd0d8;
+}
+.home-intro h1 {
+  font-size: 60px;
+}
+.preview-board {
+  background: #21151c;
+  border-color: #6c3041;
+  box-shadow: 6px 10px 0 #531327;
+}
+.preview-word {
+  background: #241a20;
+  border-color: #67424e;
+  color: #f1dfe4;
+  font-size: 15px;
+}
+.meta {
+  font-size: 14px;
+  color: #beabb1;
+}
+.how-to {
+  border-color: #50313d;
+}
+.how-to p {
+  color: #cfb9c1;
+  font-size: 15px;
+}
+.how-to span {
+  color: #be8798;
+  font-size: 13px;
+}
+.game-panel h1 {
+  font-size: 34px;
+}
+.game-panel h3,
+.sidebar h3 {
+  font-size: 18px;
+}
+.room-top .eyebrow {
+  font-size: 12px;
+}
+.room-code {
+  background: #25151f;
+  border-color: #8a3551;
+  color: #f4bdcd;
+}
+.round-badge {
+  background: #3b1323;
+  color: #f5bdcf;
+  font-size: 13px;
+}
+.roster-bar {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #1b1218;
+  padding: 17px 20px;
+  margin: 0 0 24px;
+}
+.roster-bar h3 {
+  font-size: 15px;
+  margin: 0 0 12px;
+  color: #d5b7c1;
+}
+.roster-bar .players {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+}
+.player {
+  font-size: 16px;
+}
+.player small {
+  font-size: 12px;
+  border-color: #6b4254;
+  color: #d1afb9;
+}
+.avatar,
+.player:nth-child(3n + 2) .avatar,
+.player:nth-child(3n) .avatar {
+  background: #661c34;
+  color: #ffe9ee;
+  width: 34px;
+  height: 34px;
+  font-size: 14px;
+}
+.sidebar {
+  padding-top: 10px;
+}
+.side-note {
+  font-size: 14px;
+  color: #bba0aa;
+}
+.progress-step {
+  font-size: 15px;
+  color: #9e828e;
+}
+.progress-step > span {
+  border-color: #754354;
+}
+.progress-step.active {
+  color: #f6b4c6;
+}
+.progress-step.active > span {
+  background: #9e1838;
+}
+.progress-step.done > span {
+  color: #dc7894;
+}
+.other-player {
+  border-color: #51303e;
+}
+.other-player strong {
+  font-size: 16px;
+}
+.other-player small {
+  font-size: 13px;
+  color: #c6a5b2;
+}
+.mini-chip {
+  background: #351c29;
+  color: #f1d7df;
+  font-size: 15px;
+}
+.muted {
+  font-size: 14px;
+  color: #b79ba7;
+}
+.word-bank {
+  background: #24141e;
+  border-color: #845169;
+  min-height: 72px;
+}
+.word-bank:empty:after {
+  font-size: 15px;
+  color: #d1acbc;
+}
+.word-chip {
+  background: #30212b;
+  border-color: #795263;
+  color: #fff0f4;
+  box-shadow: 0 2px 0 #080608;
+  font-size: 16px;
+  padding: 12px 15px;
+  touch-action: none;
+  cursor: grab;
+}
+.word-chip.dragging {
+  opacity: 0.4;
+}
+.word-chip:active {
+  cursor: grabbing;
+}
+.tier-row {
+  background: #1c151b;
+  border-color: #503341;
+  min-height: 76px;
+}
+.tier-label {
+  background: #b9173a;
+  color: #fff0f2;
+  border-color: #673147;
+  font-size: 26px;
+  width: 60px;
+}
+.tier-A .tier-label {
+  background: #941b3c;
+}
+.tier-B .tier-label {
+  background: #72213c;
+}
+.tier-C .tier-label {
+  background: #55233a;
+}
+.tier-D .tier-label {
+  background: #3d2536;
+}
+.tier-board {
+  border-color: #6d3b50;
+}
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.95;
+  transform: translate(-50%, -65%);
+  box-shadow: 0 8px 30px #0008;
+  max-width: 80vw;
+}
+.score-row {
+  font-size: 18px;
+}
+.points,
+summary > strong {
+  color: #f28ba7;
+}
+.rank {
+  color: #c398a8;
+}
+summary {
+  font-size: 17px;
+}
+footer {
+  font-size: 14px;
+  color: #b0919d;
+}
+footer span {
+  font-size: 13px;
+}
+@media (max-width: 799px) {
+  .brand {
+    font-size: 18px;
+  }
+  .brand small {
+    font-size: 10px;
+  }
+  .mode {
+    font-size: 11px;
+  }
+  .home-intro h1 {
+    font-size: 40px;
+  }
+  .lead {
+    font-size: 16px;
+  }
+  .join-panel h2 {
+    font-size: 25px;
+  }
+  .game-panel {
+    padding: 22px;
+  }
+  .game-panel h1 {
+    font-size: 27px;
+  }
+  .primary,
+  .secondary {
+    font-size: 16px;
+    padding: 14px 18px;
+  }
+  .room-top .eyebrow {
+    font-size: 10px;
+  }
+  .room-top button {
+    font-size: 13px;
+  }
+  .player {
+    font-size: 15px;
+  }
+  .roster-bar {
+    padding: 14px;
+    margin-bottom: 18px;
+  }
+  .roster-bar .players {
+    gap: 12px;
+  }
+  .round-badge {
+    font-size: 12px;
+  }
+  .tier-label {
+    width: 44px;
+    font-size: 23px;
+  }
+  .word-chip {
+    font-size: 15px;
+    padding: 11px;
+  }
+  .tier-items {
+    padding: 8px;
+  }
+  .tier-row {
+    min-height: 72px;
+  }
+}
+@media (max-width: 360px) {
+  .site-header {
+    padding: 18px 16px;
+    gap: 8px;
+  }
+  .brand {
+    font-size: 15px;
+    gap: 8px;
+  }
+  .brand small {
+    font-size: 9px;
+  }
+  .mode {
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+}

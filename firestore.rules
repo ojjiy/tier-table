@@ -8,7 +8,7 @@ service cloud.firestore {
   function hero(r){return room(r).roster[room(r).roundIndex];}
   function active(r,n){return member(r) && room(r).roundId==n;}
   function ready(r,n,id){return exists(/databases/$(database)/documents/rooms/$(r)/rounds/$(n)/ready/$(id));}
-  function done(r,n,i){return i>=room(r).roster.size() || room(r).roster[i]==hero(r) || ready(r,n,room(r).roster[i]);}
+  function done(r,n,i){return i>=room(r).roster.size() || exists(/databases/$(database)/documents/rooms/$(r)/rounds/$(n)/answers/$(room(r).roster[i]));}
   function allDone(r,n){return done(r,n,0)&&done(r,n,1)&&done(r,n,2)&&done(r,n,3)&&done(r,n,4)&&done(r,n,5);}
   function published(r,n){return exists(/databases/$(database)/documents/rooms/$(r)/rounds/$(n)/result/public);}
   match /rooms/{r} {
@@ -28,12 +28,12 @@ service cloud.firestore {
       && request.resource.data.players==resource.data.players && request.resource.data.memberIds==resource.data.memberIds
       && ((resource.data.phase=='lobby' && request.resource.data.phase=='theme' && resource.data.memberIds.size()>=2 && request.resource.data.roster==resource.data.memberIds && request.resource.data.roundIndex==0 && request.resource.data.roundId=='1')
        || (resource.data.phase=='theme' && request.resource.data.phase=='collect' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase','theme']) && request.resource.data.theme is string && request.resource.data.theme.size()>0 && request.resource.data.theme.size()<=100)
-       || (resource.data.phase=='collect' && request.resource.data.phase in ['collect','arrange'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase','candidates','rejected']) && (request.resource.data.phase=='collect' || (request.resource.data.candidates.size()>=5 && request.resource.data.candidates.size()<=10)))
-       || (resource.data.phase=='predict' && request.resource.data.phase=='reveal' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase']) && (request.time.toMillis()>=resource.data.predictionDeadline || allDone(r,resource.data.roundId)))
+       || (resource.data.phase=='collect' && request.resource.data.phase in ['collect','arrange','predict'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase','candidates','rejected']) && (request.resource.data.phase=='collect' || (request.resource.data.candidates.size()>=5 && request.resource.data.candidates.size()<=10)))
+       || (resource.data.phase=='predict' && request.resource.data.phase=='reveal' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase']) && allDone(r,resource.data.roundId))
        || (resource.data.phase=='reveal' && published(r,resource.data.roundId) && request.resource.data.roundIndex==resource.data.roundIndex+1 && request.resource.data.roundId==string(request.resource.data.roundIndex+1) && request.resource.data.roster==resource.data.roster && request.resource.data.phase==(request.resource.data.roundIndex>=resource.data.roster.size()?'finished':'theme') && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['roundIndex','roundId','phase','theme','candidates','predictionDeadline','rejected']))))
     || (request.auth.uid==resource.data.roster[resource.data.roundIndex] && resource.data.phase=='arrange' && request.resource.data.phase=='predict'
       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phase','predictionDeadline'])
-      && request.resource.data.predictionDeadline>=request.time.toMillis()+175000 && request.resource.data.predictionDeadline<=request.time.toMillis()+185000
+      && request.resource.data.predictionDeadline==null
       && existsAfter(/databases/$(database)/documents/rooms/$(r)/rounds/$(resource.data.roundId)/answers/$(request.auth.uid)))
    );
    match /rounds/{n}/drafts/{uid} {
@@ -48,12 +48,12 @@ service cloud.firestore {
     allow get: if member(r) && (request.auth.uid==uid || published(r,n));
     allow list: if member(r) && published(r,n);
     allow create: if active(r,n) && request.auth.uid==uid && request.resource.data.keys().hasOnly(['placement','submittedAt']) && request.resource.data.submittedAt is number && validPlacement(r,request.resource.data.placement)
-      && ((uid==hero(r) && room(r).phase=='arrange') || (uid!=hero(r) && room(r).phase=='predict' && request.time.toMillis()<room(r).predictionDeadline));
+      && ((uid==hero(r) && room(r).phase=='arrange') || room(r).phase=='predict');
     allow update,delete: if false;
    }
    match /rounds/{n}/ready/{uid} {
     allow read: if member(r);
-    allow create: if active(r,n) && request.auth.uid==uid && uid!=hero(r) && room(r).phase=='predict' && request.time.toMillis()<room(r).predictionDeadline
+    allow create: if active(r,n) && request.auth.uid==uid && room(r).phase=='predict'
       && request.resource.data=={'ready':true} && existsAfter(/databases/$(database)/documents/rooms/$(r)/rounds/$(n)/answers/$(uid));
    }
    match /rounds/{n}/result/public {

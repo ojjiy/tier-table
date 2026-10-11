@@ -90,10 +90,7 @@ export function checkAnswer(
   );
   const hero = room.roster[room.roundIndex];
   requireThat(
-    (id === hero && room.phase === "arrange") ||
-      (id !== hero &&
-        room.phase === "predict" &&
-        now < (room.predictionDeadline ?? 0)),
+    room.phase === "predict" || (id === hero && room.phase === "arrange"),
     "回答の受付は終了しています",
   );
 }
@@ -141,18 +138,16 @@ export function transition(
       next.rejected = r.rejected;
       if (r.ready) {
         next.candidates = r.candidates;
-        next.phase = "arrange";
+        next.phase = "predict";
+        next.predictionDeadline = null;
       }
       break;
     }
     case "close":
       requireThat(room.phase === "predict", "予想中ではありません");
       requireThat(
-        now >= (room.predictionDeadline ?? Infinity) ||
-          room.roster
-            .filter((pid) => pid !== room.roster[room.roundIndex])
-            .every((pid) => ready.includes(pid)),
-        "全員の回答または時間切れを待ってください",
+        room.roster.every((pid) => ready.includes(pid)),
+        "主役を含む全員の確定を待ってください",
       );
       next.phase = "reveal";
       break;

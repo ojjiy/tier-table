@@ -97,9 +97,7 @@ export class LocalStore implements Store {
       room: s.room,
       drafts: Object.values(s.drafts[s.room.roundId] ?? {}),
       answer: s.answers[s.room.roundId]?.[this.playerId],
-      ready: Object.keys(s.answers[s.room.roundId] ?? {}).filter(
-        (id) => id !== s.room.roster[s.room.roundIndex],
-      ),
+      ready: Object.keys(s.answers[s.room.roundId] ?? {}),
       results: s.results,
     };
   }
@@ -160,7 +158,7 @@ export class LocalStore implements Store {
       };
       if (s.room.phase === "arrange") {
         s.room.phase = "predict";
-        s.room.predictionDeadline = Date.now() + 180000;
+        s.room.predictionDeadline = null;
       }
     });
   }

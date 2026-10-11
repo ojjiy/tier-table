@@ -5,9 +5,13 @@ async function words(p: Page, ws: string[]) {
   await p.getByRole("button", { name: "ワードを送信", exact: true }).click();
 }
 async function place(p: Page) {
-  await expect(p.locator(".placement-select")).toHaveCount(6);
-  for (const s of await p.locator(".placement-select").all())
-    await s.selectOption("S");
+  await expect(p.locator(".game-panel button.word-chip")).toHaveCount(6);
+  await expect(p.locator("select")).toHaveCount(0);
+  while (await p.locator(".word-bank .word-chip").count())
+    await p
+      .locator(".word-bank .word-chip")
+      .first()
+      .dragTo(p.locator(".tier-S"));
   await p.getByRole("button", { name: "配置を確定", exact: true }).click();
 }
 test("2タブで2ラウンドを遊び、320pxでもはみ出さず復帰する", async ({
@@ -28,6 +32,10 @@ test("2タブで2ラウンドを遊び、320pxでもはみ出さず復帰する"
   await b.getByLabel("あなたの名前").fill("みどり");
   await b.getByRole("button", { name: "ルームに参加" }).click();
   await expect(a.getByText("みどり", { exact: true })).toBeVisible();
+  await expect(b.locator(".players .player")).toHaveCount(2);
+  const bounds = await b.locator(".players").boundingBox();
+  const panel = await b.locator(".game-panel").boundingBox();
+  expect(bounds!.y).toBeLessThan(panel!.y);
   await a.getByRole("button", { name: "ゲームをはじめる" }).click();
   for (let round = 0; round < 2; round++) {
     await a
@@ -46,7 +54,11 @@ test("2タブで2ラウンドを遊び、320pxでもはみ出さず復帰する"
     await a.getByRole("button", { name: "配置へ進む" }).click();
     const hero = round === 0 ? a : b,
       guess = round === 0 ? b : a;
-    await place(hero);
+    await expect(
+      hero.getByRole("heading", { name: "あなたの好みで並べよう" }),
+    ).toBeVisible();
+    await expect(guess.locator(".word-bank .word-chip")).toHaveCount(6);
+    await expect(guess.locator(".timer")).toHaveCount(0);
     await expect(
       guess.getByRole("heading", { name: "主役の好みを予想しよう" }),
     ).toBeVisible();
@@ -54,7 +66,36 @@ test("2タブで2ラウンドを遊び、320pxでもはみ出さず復帰する"
     await expect(
       guess.getByRole("heading", { name: "主役の好みを予想しよう" }),
     ).toBeVisible();
+    if (round === 0) {
+      await guess.setViewportSize({ width: 320, height: 780 });
+      const chip = guess.locator(".word-bank .word-chip").first(),
+        row = guess.locator(".tier-S");
+      await row.scrollIntoViewIfNeeded();
+      const from = await chip.boundingBox(),
+        to = await row.boundingBox();
+      const cdp = await guess.context().newCDPSession(guess);
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [
+          { x: from!.x + from!.width / 2, y: from!.y + from!.height / 2 },
+        ],
+      });
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: to!.x + to!.width / 2, y: to!.y + to!.height / 2 }],
+      });
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+      await cdp.detach();
+      await expect(guess.locator(".word-bank .word-chip")).toHaveCount(5);
+    }
     await place(guess);
+    await expect(
+      guess.getByRole("heading", { name: "答え合わせ" }),
+    ).toHaveCount(0);
+    await place(hero);
     await expect(a.getByRole("heading", { name: "答え合わせ" })).toBeVisible();
     await expect(a.getByText("6点", { exact: true }).first()).toBeVisible();
     await a
@@ -184,4 +225,108 @@ test("送信中はワードを固定し、完了後に編集できる", async ({
     a.getByRole("button", { name: "送信済み・再送信できます", exact: true }),
   ).toBeVisible();
   await expect(a.getByLabel("ワード1", { exact: true })).toBeEnabled();
+});
+
+test("長い候補を画面外のD段までタッチドラッグできる", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 780 });
+  await page.goto("/");
+  await expect(page.getByLabel("あなたの名前")).toBeVisible();
+  await page.evaluate(async () => {
+    const path = "/src/ui/placement.ts";
+    const { createPlacementEditor } = await import(path);
+    document.querySelector("main")!.replaceChildren();
+    const area = document.createElement("div");
+    document.querySelector("main")!.append(area);
+    createPlacementEditor(
+      area,
+      Array.from({ length: 10 }, (_, i) => ({
+        id: String(i),
+        text: `${i}長い候補ワードをドラッグして画面の外にある段まで配置できるか確認`,
+        ownerId: "a",
+        slot: i,
+      })),
+      {},
+      () => {},
+    );
+  });
+  const chip = page.locator(".word-bank .word-chip").first();
+  await chip.scrollIntoViewIfNeeded();
+  const from = await chip.boundingBox();
+  const before = await page.evaluate(() => scrollY);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: from!.x + 50, y: from!.y + 15 }],
+  });
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: 160, y: 770 }],
+  });
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => scrollY)).toBeGreaterThan(before + 100);
+  await expect
+    .poll(async () => (await page.locator(".tier-D").boundingBox())!.y)
+    .toBeLessThan(700);
+  const to = await page.locator(".tier-D").boundingBox();
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: 160, y: Math.max(10, to!.y + 35) }],
+  });
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await expect(page.locator(".tier-D .word-chip")).toHaveCount(1);
+  await expect(page.locator(".drag-ghost")).toHaveCount(0);
+  await cdp.detach();
+});
+test("複数の指が触れてもドラッグの残像を残さない", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByLabel("あなたの名前")).toBeVisible();
+  await page.evaluate(async () => {
+    const path = "/src/ui/placement.ts";
+    const { createPlacementEditor } = await import(path);
+    const m = document.querySelector("main")!;
+    m.replaceChildren();
+    createPlacementEditor(
+      m,
+      [
+        { id: "a", text: "一つ目", ownerId: "a", slot: 0 },
+        { id: "b", text: "二つ目", ownerId: "a", slot: 1 },
+      ],
+      {},
+      () => {},
+    );
+  });
+  const a = await page.locator(".word-bank .word-chip").nth(0).boundingBox(),
+    b = await page.locator(".word-bank .word-chip").nth(1).boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const p1 = { id: 1, x: a!.x + 15, y: a!.y + 15 },
+    p2 = { id: 2, x: b!.x + 15, y: b!.y + 15 };
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [p1],
+  });
+  p1.y += 20;
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [p1],
+  });
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [p1, p2],
+  });
+  p2.y += 20;
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [p1, p2],
+  });
+  await expect(page.locator(".drag-ghost")).toHaveCount(1);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await expect(page.locator(".drag-ghost")).toHaveCount(0);
+  await expect(page.locator(".dragging")).toHaveCount(0);
+  await cdp.detach();
 });

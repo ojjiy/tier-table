@@ -72,7 +72,7 @@ it("同時送信の重複が5個未満になったら修正待ちにする", asy
   expect((await a.read(id)).room.phase).toBe("collect");
   expect((await a.read(id)).room.rejected).toHaveLength(2);
 });
-it("期限後の提出を拒否し、未提出者は0点になる", async () => {
+it("参加者が主役より先に提出でき、時間経過でも締め切らない", async () => {
   const a = new LocalStore("a", storage),
     b = new LocalStore("b", storage);
   const id = await a.createRoom("a");
@@ -86,16 +86,16 @@ it("期限後の提出を拒否し、未提出者は0点になる", async () => 
   const p = Object.fromEntries(
     (await a.read(id)).room.candidates.map((w) => [w.id, "S"]),
   ) as any;
-  await a.saveAnswer(id, r, { placement: p, submittedAt: Date.now() });
+  expect((await a.read(id)).room.phase).toBe("predict");
   const state = JSON.parse(storage.getItem(`tier-room:${id}`)!);
   state.room.predictionDeadline = Date.now() - 1;
   storage.setItem(`tier-room:${id}`, JSON.stringify(state));
-  await expect(
-    b.saveAnswer(id, r, { placement: p, submittedAt: Date.now() }),
-  ).rejects.toThrow();
+  await b.saveAnswer(id, r, { placement: p, submittedAt: Date.now() });
+  await expect(a.advance(id, { type: "close" })).rejects.toThrow();
+  await a.saveAnswer(id, r, { placement: p, submittedAt: Date.now() });
   await a.advance(id, { type: "close" });
   await a.publishCorrect(id, r);
-  expect((await a.read(id)).results[0].scores.b ?? 0).toBe(0);
+  expect((await a.read(id)).results[0].scores.b ?? 0).toBe(6);
 });
 it("別タブ相当の同時回答で送信済み回答を失わない", async () => {
   const a = new LocalStore("a", storage);
@@ -133,6 +133,6 @@ it("別タブ相当の同時回答で送信済み回答を失わない", async (
   c = new LocalStore("c", interleaved);
   await b.saveAnswer(id, r, { placement: p, submittedAt: Date.now() });
   await concurrent;
-  expect((await b.read(id)).ready.sort()).toEqual(["b", "c"]);
+  expect((await b.read(id)).ready.sort()).toEqual(["a", "b", "c"]);
   expect((await c.read(id)).answer).toBeDefined();
 });

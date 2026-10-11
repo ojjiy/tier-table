@@ -125,6 +125,16 @@ export class FirebaseStore implements Store {
         collection(this.db, "rooms", id, "rounds", room.roundId, "ready"),
       ),
     ]);
+    // Recover a legacy answer whose separate readiness write was interrupted.
+    const recovered =
+      room.phase === "predict" &&
+      own.exists() &&
+      !own.metadata.hasPendingWrites &&
+      !readyDocs.docs.some((d) => d.id === this.playerId);
+    if (recovered)
+      await setDoc(this.rref(id, room.roundId, "ready", this.playerId), {
+        ready: true,
+      });
     const results: RoundResult[] = [];
     for (
       let i = 0;
@@ -151,7 +161,18 @@ export class FirebaseStore implements Store {
       room,
       drafts,
       answer: own.exists() ? (own.data() as Answer) : undefined,
-      ready: readyDocs.docs.map((d) => d.id),
+      ready: [
+        ...new Set([
+          ...readyDocs.docs
+            .filter((d) => !d.metadata.hasPendingWrites)
+            .map((d) => d.id),
+          ...(recovered ? [this.playerId] : []),
+          // Older rounds entered predict only after the protagonist submitted.
+          ...(room.phase === "predict" && room.predictionDeadline !== null
+            ? [room.roster[room.roundIndex]]
+            : []),
+        ]),
+      ],
       results,
     };
   }
@@ -205,6 +226,7 @@ export class FirebaseStore implements Store {
             ),
             onSnapshot(
               collection(this.db, "rooms", id, "rounds", round, "ready"),
+              { includeMetadataChanges: true },
               refresh,
               onError,
             ),
@@ -260,10 +282,14 @@ export class FirebaseStore implements Store {
     if (room.phase === "arrange")
       batch.update(this.ref(id), {
         phase: "predict",
-        predictionDeadline: Date.now() + 180000,
+        predictionDeadline: null,
       });
-    else batch.set(this.rref(id, n, "ready", this.playerId), { ready: true });
+    if (room.phase !== "arrange")
+      batch.set(this.rref(id, n, "ready", this.playerId), { ready: true });
     await batch.commit();
+    // Legacy arrange rooms must change phase before the marker passes the rules.
+    if (room.phase === "arrange")
+      await setDoc(this.rref(id, n, "ready", this.playerId), { ready: true });
   }
   async advance(id: string, action: HostAction) {
     const s = await this.read(id);

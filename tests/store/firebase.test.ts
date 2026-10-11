@@ -1,5 +1,10 @@
 import { it, expect, vi } from "vitest";
-const state = vi.hoisted(() => ({ pending: true }));
+const state = vi.hoisted(() => ({
+  pending: true,
+  ownExists: true,
+  phase: "reveal",
+  deadline: 1 as number | null,
+}));
 vi.mock("firebase/firestore", () => ({
   doc: (_db: unknown, ...parts: string[]) => ({ path: parts.join("/") }),
   collection: (_db: unknown, ...parts: string[]) => ({ path: parts.join("/") }),
@@ -12,12 +17,12 @@ vi.mock("firebase/firestore", () => ({
         { id: "b", name: "b" },
       ],
       roster: ["a", "b"],
-      phase: "reveal",
+      phase: state.phase,
       roundId: "1",
       roundIndex: 0,
       theme: "t",
       candidates: [{ id: "w", text: "w", ownerId: "a", slot: 0 }],
-      predictionDeadline: 1,
+      predictionDeadline: state.deadline,
       rejected: [],
     };
     const result = {
@@ -28,7 +33,7 @@ vi.mock("firebase/firestore", () => ({
       protagonistId: "a",
     };
     return {
-      exists: () => true,
+      exists: () => !ref.path.includes("/answers/") || state.ownExists,
       data: () =>
         ref.path === "rooms/r"
           ? room
@@ -68,4 +73,18 @@ it("公開結果のローカル書き込み中は秘密回答を一覧取得せ�
   await expect(store.read("r")).resolves.toMatchObject({
     results: [{ scores: { b: 1 } }],
   });
+});
+
+it("旧版で予想中のルームは既存の主役回答を提出済みとして扱う", async () => {
+  state.pending = false;
+  state.phase = "predict";
+  state.deadline = 123;
+  state.ownExists = false;
+  expect((await new FirebaseStore({} as any, "b").read("r")).ready).toContain(
+    "a",
+  );
+  state.deadline = null;
+  expect(
+    (await new FirebaseStore({} as any, "a").read("r")).ready,
+  ).not.toContain("a");
 });
