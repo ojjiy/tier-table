@@ -1,21 +1,23 @@
 # 初期版の検証記録
 
-対象コード: `f5adea8`（公開前のApp Check・競合修正を含む）。公開先: https://ojjiy.github.io/tier-table/
+対象コード: `cdd059e`（公開後に判明した答え合わせ同期の修正を含む）。公開先: https://ojjiy.github.io/tier-table/
 
 ## 実行結果
 
-- 単体・ローカルストア・App Check設定: 16件成功。
+- 単体・ローカルストア・App Check設定・Firebase同期回帰: 17件成功。
 - Firestore Emulatorの権限検証: 7件成功。最大6人での早期公開拒否を含む。
 - ローカルモードのブラウザ試験: 4件成功。
 - Firebase Emulatorのブラウザ試験: 3件成功。ローカルストアの遅延注入を使う1件だけ対象外（ローカル試験で成功済み）。ゲーム完走試験は独立したブラウザコンテキストで実施。
 - Pages相当の本番ビルド・サブパス試験: 1件成功。
 - `npm run build`: 成功。Firebaseの遅延読込チャンクサイズに関するViteの推奨警告あり。
 - `npm audit --omit=dev`: 既知の脆弱性0件。
-- GitHub Actions: テストとPagesデプロイ成功。https://github.com/ojjiy/tier-table/actions/runs/38146057044
+- GitHub Actions: テストとPagesデプロイ成功。https://github.com/ojjiy/tier-table/actions/runs/38146800904
 
 ## 公開後の確認
 
-公開URLから画面とFirebase設定を読み込めることを確認。初回の本番試験は匿名認証の`auth/configuration-not-found`で停止したため、ユーザーへAuthenticationの初期設定と匿名プロバイダの有効化を依頼した。オンラインでのゲーム完走は、この設定後の確認が必要。
+ユーザーがAuthenticationを設定した後、公開URLの独立した2ブラウザで2ラウンドを完走した。ワード募集、配置、予想、両者の答え合わせ、主役交代、最終得点を確認。320px幅の結果画面も横方向のはみ出しなし。確認用ルーム: `a84757155c4d`。App Checkのブラウザ初期化は実装済みだが、ユーザーの設定では強制適用を解除した状態で検証した。
+
+本番の最初の完走試験で、主役が正解公開のローカル未確定結果をもとに秘密回答一覧を要求し、権限拒否後に更新が止まる問題を検出した。未確定結果を読み飛ばし、サーバー保存完了のmetadataイベントで更新するよう修正。回帰試験の失敗→成功、Emulatorの完走、CI、上記の本番完走を確認した。
 
 ## 操作・表示
 
