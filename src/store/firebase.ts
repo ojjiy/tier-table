@@ -133,7 +133,7 @@ export class FirebaseStore implements Store {
     ) {
       const n = String(i + 1);
       const pub = await getDoc(this.rref(id, n, "result", "public"));
-      if (!pub.exists()) continue;
+      if (!pub.exists() || pub.metadata.hasPendingWrites) continue;
       const p = pub.data() as PublicResult;
       const answers = await getDocs(
         collection(this.db, "rooms", id, "rounds", n, "answers"),
@@ -210,7 +210,10 @@ export class FirebaseStore implements Store {
             ),
             onSnapshot(
               this.rref(id, round, "result", "public"),
-              refresh,
+              { includeMetadataChanges: true },
+              (result) => {
+                if (!result.metadata.hasPendingWrites) refresh();
+              },
               onError,
             ),
             onSnapshot(

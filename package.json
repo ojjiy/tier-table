@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run tests/domain tests/store/local.test.ts",
+    "test": "vitest run tests/domain tests/store/local.test.ts tests/store/firebase.test.ts",
     "test:rules": "firebase emulators:exec --project demo-tier-table --only firestore 'vitest run tests/store/rules.test.ts'",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1",
