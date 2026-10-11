@@ -815,71 +815,98 @@ footer span {
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
-/* Velvet theatre palette */
+/* Classic cinema: charcoal walls, red curtains and brass details. */
 :root {
   color-scheme: dark;
-  --ink: #f4ede4;
-  --muted: #b7a9ab;
-  --line: #443037;
-  --green: #b51636;
-  --paper: #181316;
-  color: #f4ede4;
-  background: #0d0b0e;
+  --ink: #f5f0e5;
+  --muted: #b8b5ae;
+  --line: #44403a;
+  --green: #c32323;
+  --paper: #252421;
+  color: #f5f0e5;
+  background: #171717;
   font-size: 17px;
 }
 body {
-  background:
-    radial-gradient(ellipse at 95% 5%, #5c11244d 0, transparent 43%),
-    radial-gradient(ellipse at 0 0, #4e0f2040 0, transparent 35%), #0d0b0e;
+  background: transparent;
+  position: relative;
+  isolation: isolate;
+}
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: clamp(12px, 3.75vw, 48px);
+  z-index: -1;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    90deg,
+    #770707 0,
+    #b51b18 12px,
+    #d53429 21px,
+    #a20e0e 30px,
+    #650707 43px
+  );
+  box-shadow: inset 0 0 15px #0007;
+}
+body::before {
+  left: 0;
+  border-right: 1px solid #c3a363;
+}
+body::after {
+  right: 0;
+  border-left: 1px solid #c3a363;
 }
 .site-header {
-  border-bottom-color: #54303b;
+  border-bottom-color: #7c6946;
 }
 .brand {
   font-size: 22px;
 }
 .brand small {
   font-size: 11px;
-  color: #c5a9ae;
+  color: #c9ac72;
 }
 .brand-icon i {
-  background: #b71c3a;
+  background: #bd2323;
   color: #fff;
 }
 .brand-icon i:nth-child(2) {
-  background: #8e1b33;
+  background: #a61c1c;
 }
 .brand-icon i:nth-child(3) {
-  background: #62182b;
+  background: #861515;
 }
 .mode,
 .mode.local {
-  background: #28191f;
-  border-color: #60404b;
+  background: #2b2925;
+  border-color: #6b5a3a;
   font-size: 13px;
-  color: #ead4da;
+  color: #e2d4b7;
 }
 .mode:before {
-  color: #df4260;
+  color: #93b68b;
 }
 .mode.local:before {
-  color: #bda37b;
+  color: #c9ac72;
 }
 .eyebrow {
-  color: #c3a6ae;
+  color: #c9ac72;
   font-size: 12px;
 }
 .lead {
-  color: #c6b9ba;
+  color: #c5c2b8;
   font-size: 17px;
 }
 .hint {
-  color: #c0b0b4;
+  color: #b8b5ae;
   font-size: 15px;
 }
 .paper {
-  background: linear-gradient(145deg, #21191e, #151216);
-  border-color: #4a2c38;
+  background: #252421;
+  border-color: #6e5b38;
   box-shadow: 0 12px 35px #0005;
 }
 .join-panel h2 {
@@ -889,79 +916,79 @@ body {
   font-size: 16px;
 }
 .field input {
-  background: #110e12;
-  border-color: #5c3b48;
-  color: #f9f1ec;
+  background: #161615;
+  border-color: #666056;
+  color: #f8f3e9;
   font-size: 17px;
   padding: 15px;
 }
 .field input::placeholder {
-  color: #9c8890;
+  color: #a6a296;
 }
 input:focus {
-  outline-color: #da4564;
+  outline-color: #c9ac72;
 }
 .primary,
 .secondary {
   font-size: 17px;
   padding: 15px 24px;
-  border-color: #c12646;
+  border-color: #d84235;
 }
 .primary {
-  background: #a20d2d;
+  background: #c32323;
 }
 .primary:hover:not(:disabled) {
-  background: #c11c40;
+  background: #d63228;
 }
 .secondary {
-  color: #f5ccd4;
-  background: #32141f;
+  color: #ebd9b1;
+  background: #312c24;
 }
 .secondary:hover:not(:disabled) {
-  background: #4f192a;
+  background: #484032;
 }
 .text-button {
   font-size: 15px;
-  color: #e5b2bf;
+  color: #d8c08b;
 }
 .notice {
-  background: #291b20;
-  border-color: #60404a;
-  color: #e0c2bb;
+  background: #302d25;
+  border-color: #675a3d;
+  color: #e1d4b3;
   font-size: 15px;
 }
 .notice.error {
-  background: #3b1420;
-  border-color: #b43652;
-  color: #ffd0d8;
+  background: #3c201c;
+  border-color: #b54837;
+  color: #ffd7ca;
 }
 .home-intro h1 {
   font-size: 60px;
 }
 .preview-board {
-  background: #21151c;
-  border-color: #6c3041;
-  box-shadow: 6px 10px 0 #531327;
+  background: #252421;
+  border-color: #9a804a;
+  box-shadow: 6px 10px 0 #3a3326;
 }
 .preview-word {
-  background: #241a20;
-  border-color: #67424e;
-  color: #f1dfe4;
+  background: #393830;
+  border-color: #76705e;
+  color: #f1ebdf;
   font-size: 15px;
 }
 .meta {
   font-size: 14px;
-  color: #beabb1;
+  color: #b8b2a5;
 }
 .how-to {
-  border-color: #50313d;
+  border-color: #66583d;
 }
 .how-to p {
-  color: #cfb9c1;
+  color: #c5c2b8;
   font-size: 15px;
 }
 .how-to span {
-  color: #be8798;
+  color: #c9ac72;
   font-size: 13px;
 }
 .game-panel h1 {
@@ -975,26 +1002,26 @@ input:focus {
   font-size: 12px;
 }
 .room-code {
-  background: #25151f;
-  border-color: #8a3551;
-  color: #f4bdcd;
+  background: #302c23;
+  border-color: #8c7549;
+  color: #f1e2bd;
 }
 .round-badge {
-  background: #3b1323;
-  color: #f5bdcf;
+  background: #3b3324;
+  color: #e8d4a6;
   font-size: 13px;
 }
 .roster-bar {
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #1b1218;
+  background: #22221f;
   padding: 17px 20px;
   margin: 0 0 24px;
 }
 .roster-bar h3 {
   font-size: 15px;
   margin: 0 0 12px;
-  color: #d5b7c1;
+  color: #d1c8b2;
 }
 .roster-bar .players {
   flex-direction: row;
@@ -1006,14 +1033,14 @@ input:focus {
 }
 .player small {
   font-size: 12px;
-  border-color: #6b4254;
-  color: #d1afb9;
+  border-color: #6b5e43;
+  color: #cabc9e;
 }
 .avatar,
 .player:nth-child(3n + 2) .avatar,
 .player:nth-child(3n) .avatar {
-  background: #661c34;
-  color: #ffe9ee;
+  background: #57482d;
+  color: #f8edce;
   width: 34px;
   height: 34px;
   font-size: 14px;
@@ -1023,57 +1050,57 @@ input:focus {
 }
 .side-note {
   font-size: 14px;
-  color: #bba0aa;
+  color: #aaa79d;
 }
 .progress-step {
   font-size: 15px;
-  color: #9e828e;
+  color: #999589;
 }
 .progress-step > span {
-  border-color: #754354;
+  border-color: #786a4c;
 }
 .progress-step.active {
-  color: #f6b4c6;
+  color: #e9d5a4;
 }
 .progress-step.active > span {
-  background: #9e1838;
+  background: #a72320;
 }
 .progress-step.done > span {
-  color: #dc7894;
+  color: #c9ac72;
 }
 .other-player {
-  border-color: #51303e;
+  border-color: #4e4d44;
 }
 .other-player strong {
   font-size: 16px;
 }
 .other-player small {
   font-size: 13px;
-  color: #c6a5b2;
+  color: #b6b1a4;
 }
 .mini-chip {
-  background: #351c29;
-  color: #f1d7df;
+  background: #38372f;
+  color: #ebe4d4;
   font-size: 15px;
 }
 .muted {
   font-size: 14px;
-  color: #b79ba7;
+  color: #a9a496;
 }
 .word-bank {
-  background: #24141e;
-  border-color: #845169;
+  background: #24241f;
+  border-color: #7b7157;
   min-height: 72px;
 }
 .word-bank:empty:after {
   font-size: 15px;
-  color: #d1acbc;
+  color: #c1b795;
 }
 .word-chip {
-  background: #30212b;
-  border-color: #795263;
-  color: #fff0f4;
-  box-shadow: 0 2px 0 #080608;
+  background: #393830;
+  border-color: #76705e;
+  color: #f1ebdf;
+  box-shadow: 0 2px 0 #0d0d0c;
   font-size: 16px;
   padding: 12px 15px;
   touch-action: none;
@@ -1086,14 +1113,14 @@ input:focus {
   cursor: grabbing;
 }
 .tier-row {
-  background: #1c151b;
-  border-color: #503341;
+  background: #252521;
+  border-color: #4e4d44;
   min-height: 76px;
 }
 .tier-label {
   background: #b9173a;
-  color: #fff0f2;
-  border-color: #673147;
+  color: #fff0e8;
+  border-color: #6b6050;
   font-size: 26px;
   width: 60px;
 }
@@ -1110,7 +1137,7 @@ input:focus {
   background: #3d2536;
 }
 .tier-board {
-  border-color: #6d3b50;
+  border-color: #77705b;
 }
 .drag-ghost {
   position: fixed;
@@ -1126,17 +1153,17 @@ input:focus {
 }
 .points,
 summary > strong {
-  color: #f28ba7;
+  color: #e2c684;
 }
 .rank {
-  color: #c398a8;
+  color: #bba575;
 }
 summary {
   font-size: 17px;
 }
 footer {
   font-size: 14px;
-  color: #b0919d;
+  color: #b8b2a5;
 }
 footer span {
   font-size: 13px;
@@ -1243,16 +1270,16 @@ footer span {
   color: #19343b;
 }
 .kick-button {
-  border: 1px solid #784454;
+  border: 1px solid #8b7042;
   background: transparent;
-  color: #e8b3c1;
+  color: #dbc38f;
   border-radius: 5px;
   padding: 4px 7px;
   font-size: 12px;
   white-space: nowrap;
 }
 .kick-button:hover {
-  background: #5b1b30;
+  background: #4d382a;
 }
 .player {
   max-width: 100%;
@@ -1261,4 +1288,20 @@ footer span {
 .player > span:not(.avatar) {
   overflow-wrap: anywhere;
   min-width: 0;
+}
+
+.paper {
+  border-radius: 12px;
+}
+@media (min-width: 800px) {
+  .home-intro h1 {
+    font-size: 56px;
+  }
+}
+@media (max-width: 799px) {
+  body::before,
+  body::after {
+    width: 10px;
+    background-size: 30px 100%;
+  }
 }
