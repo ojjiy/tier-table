@@ -72,3 +72,28 @@ it("同時送信の重複が5個未満になったら修正待ちにする", asy
   expect((await a.read(id)).room.phase).toBe("collect");
   expect((await a.read(id)).room.rejected).toHaveLength(2);
 });
+it("期限後の提出を拒否し、未提出者は0点になる", async () => {
+  const a = new LocalStore("a", storage),
+    b = new LocalStore("b", storage);
+  const id = await a.createRoom("a");
+  await b.joinRoom(id, "b");
+  await a.advance(id, { type: "start" });
+  await a.advance(id, { type: "theme", theme: "t" });
+  const r = (await a.read(id)).room.roundId;
+  await a.submitDraft(id, r, ["a", "b", "c"]);
+  await b.submitDraft(id, r, ["d", "e", "f"]);
+  await a.advance(id, { type: "candidates" });
+  const p = Object.fromEntries(
+    (await a.read(id)).room.candidates.map((w) => [w.id, "S"]),
+  ) as any;
+  await a.saveAnswer(id, r, { placement: p, submittedAt: Date.now() });
+  const state = JSON.parse(storage.getItem(`tier-room:${id}`)!);
+  state.room.predictionDeadline = Date.now() - 1;
+  storage.setItem(`tier-room:${id}`, JSON.stringify(state));
+  await expect(
+    b.saveAnswer(id, r, { placement: p, submittedAt: Date.now() }),
+  ).rejects.toThrow();
+  await a.advance(id, { type: "close" });
+  await a.publishCorrect(id, r);
+  expect((await a.read(id)).results[0].scores.b ?? 0).toBe(0);
+});

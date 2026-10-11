@@ -56,7 +56,6 @@ export async function firebaseStore(): Promise<Store> {
     appId: e.VITE_FIREBASE_APP_ID,
   });
   const auth = getAuth(app);
-  await setPersistence(auth, browserSessionPersistence);
   const db = getFirestore(app);
   if (e.VITE_USE_EMULATORS === "true") {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", {
@@ -64,6 +63,7 @@ export async function firebaseStore(): Promise<Store> {
     });
     connectFirestoreEmulator(db, "127.0.0.1", 8080);
   }
+  await setPersistence(auth, browserSessionPersistence);
   await auth.authStateReady();
   const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
   return new FirebaseStore(db, user.uid);
