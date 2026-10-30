@@ -226,7 +226,12 @@ function connect() {
       screenKey = "removed";
       main.replaceChildren(
         jp("h1", "ルームから退出しました"),
-        jp("p", "ほかの参加者によって退出処理が行われました。", "lead"),
+        jp(
+          "p",
+          "ほかの参加者によって退出処理が行われました。同じルームへ再参加できます。",
+          "lead",
+        ),
+        button("再参加する", () => home(true)),
         button("ホームへ", () => {
           location.href = location.pathname;
         }),
@@ -267,7 +272,7 @@ function update(s: RoomSnapshot) {
     const name = r.players.find((p) => p.id === target)?.name ?? "参加者";
     if (
       window.confirm(
-        `${name}さんをキックしますか？ 未完了のラウンドは残ったメンバーでやり直します。`,
+        `${name}さんをキックしますか？ 未完了のラウンドは残ったメンバーでやり直します。キック後も再参加できます。`,
       )
     )
       void run(() => store.kickPlayer(roomId, target));

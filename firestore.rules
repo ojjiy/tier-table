@@ -38,19 +38,34 @@ service cloud.firestore {
        &&n.roundIds==(phase=='theme'?history(old).concat([nextRound(old)]):history(old))
        &&n.diff(old).affectedKeys().hasOnly(['players','memberIds','departed','departedIds','hostId','roster','roundIndex','phase','candidates','rejected','predictionDeadline','theme','roundId','roundIds'])));
   }
+  function validJoin() {
+   let old=resource.data;
+   let n=request.resource.data;
+   let uid=request.auth.uid;
+   let returning=uid in old.get('departedIds',[]);
+   let removed=old.get('departed',[]).removeAll(n.departed);
+   let sameRound=old.phase in ['lobby','reveal'];
+   return !(uid in old.memberIds)&&old.memberIds.size()<6&&old.phase!='finished'&&(old.phase=='lobby'||returning)
+    &&n.memberIds==old.memberIds.concat([uid])
+    &&n.players==old.players.concat([n.players[old.players.size()]])
+    &&n.players[old.players.size()].id==uid&&n.players[old.players.size()].name is string
+    &&n.players[old.players.size()].name.size()>0&&n.players[old.players.size()].name.size()<=20
+    &&n.departedIds==old.get('departedIds',[]).removeAll([uid])
+    &&(returning?removed.size()==1&&removed[0].id==uid&&n.departed==old.departed.removeAll(removed):n.departed==old.get('departed',[]))
+    &&n.hostId==old.hostId
+    &&n.roster==(old.phase=='lobby'?old.roster:old.roster.concat([uid]))
+    &&n.roundIndex==old.roundIndex
+    &&(sameRound?n.phase==old.phase&&n.diff(old).affectedKeys().hasOnly(['players','memberIds','departed','departedIds','roster'])
+     :n.phase=='theme'&&n.roundId==nextRound(old)&&n.roundIds==history(old).concat([nextRound(old)])
+      &&n.candidates==[]&&n.rejected==[]&&n.predictionDeadline==null&&n.theme==old.theme
+      &&n.diff(old).affectedKeys().hasOnly(['players','memberIds','departed','departedIds','roster','phase','roundId','roundIds','candidates','rejected','predictionDeadline']));
+  }
   match /rooms/{r} {
-   allow get: if signed() && ((resource.data.phase=='lobby' && !(request.auth.uid in resource.data.get('departedIds',[]))) || request.auth.uid in resource.data.memberIds);
+   allow get: if signed() && (resource.data.phase=='lobby' || request.auth.uid in resource.data.get('departedIds',[]) || request.auth.uid in resource.data.memberIds);
    allow list,delete: if false;
    allow create: if signed() && request.resource.data.hostId==request.auth.uid && request.resource.data.memberIds==[request.auth.uid] && request.resource.data.players.size()==1 && request.resource.data.players[0].id==request.auth.uid && request.resource.data.phase=='lobby' && request.resource.data.roster==[];
    allow update: if signed() && (
-    (resource.data.phase=='lobby' && request.resource.data.phase=='lobby' && resource.data.players.size()<6 && !(request.auth.uid in resource.data.memberIds) && !(request.auth.uid in resource.data.get('departedIds',[]))
-      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players','memberIds'])
-      && request.resource.data.memberIds==resource.data.memberIds.concat([request.auth.uid])
-      && request.resource.data.players==resource.data.players.concat([request.resource.data.players[resource.data.players.size()]])
-      && request.resource.data.players[resource.data.players.size()].id==request.auth.uid
-      && request.resource.data.players[resource.data.players.size()].name is string
-      && request.resource.data.players[resource.data.players.size()].name.size()>0
-      && request.resource.data.players[resource.data.players.size()].name.size()<=20)
+    validJoin()
     || (request.auth.uid==resource.data.hostId && request.resource.data.hostId==resource.data.hostId
       && request.resource.data.players==resource.data.players && request.resource.data.memberIds==resource.data.memberIds
       && request.resource.data.get('departed',[])==resource.data.get('departed',[]) && request.resource.data.get('departedIds',[])==resource.data.get('departedIds',[])

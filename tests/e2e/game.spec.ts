@@ -444,3 +444,51 @@ test("開始待ちでもキックでき、新しいホストが参加者を待�
     await newcomerContext.close();
   }
 });
+test("キックされた人が同じゲームに再参加し、320pxで新しい人数の募集へ戻る", async ({
+  context,
+  page: a,
+}) => {
+  await a.goto("/");
+  await a.getByLabel("あなたの名前").fill("ホスト");
+  await a.getByRole("button", { name: "ルームをつくる" }).click();
+  await expect(
+    a.getByRole("heading", { name: "みんなを待っています" }),
+  ).toBeVisible();
+  const contexts = [];
+  const guests = [];
+  for (const name of ["戻る人", "残る人"]) {
+    const ctx = process.env.TEST_FIREBASE
+      ? await context.browser()!.newContext()
+      : context;
+    contexts.push(ctx);
+    const p = await ctx.newPage();
+    await p.goto(a.url());
+    await p.getByLabel("あなたの名前").fill(name);
+    await p.getByRole("button", { name: "ルームに参加" }).click();
+    guests.push(p);
+  }
+  const [b] = guests;
+  await expect(a.locator(".players .player")).toHaveCount(3);
+  await a.getByRole("button", { name: "ゲームをはじめる" }).click();
+  a.on("dialog", (d) => d.accept());
+  await a.getByRole("button", { name: "戻る人をキック", exact: true }).click();
+  await expect(
+    b.getByRole("heading", { name: "ルームから退出しました" }),
+  ).toBeVisible();
+  await a.getByLabel("今回のテーマ", { exact: true }).fill("再参加テスト");
+  await a.getByRole("button", { name: "ワード募集をはじめる" }).click();
+  await expect(a.getByLabel("ワード3", { exact: true })).toBeVisible();
+  await b.setViewportSize({ width: 320, height: 780 });
+  await b.getByRole("button", { name: "再参加する", exact: true }).click();
+  await b.getByRole("button", { name: "ルームに参加", exact: true }).click();
+  await expect(b.locator(".players .player")).toHaveCount(3);
+  await expect(a.getByLabel("今回のテーマ", { exact: true })).toBeVisible();
+  await a.getByLabel("今回のテーマ", { exact: true }).fill("三人で再開");
+  await a.getByRole("button", { name: "ワード募集をはじめる" }).click();
+  await expect(b.getByLabel("ワード2", { exact: true })).toBeVisible();
+  await expect(b.getByLabel("ワード3", { exact: true })).toHaveCount(0);
+  expect(
+    await b.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBe(true);
+  if (process.env.TEST_FIREBASE) for (const ctx of contexts) await ctx.close();
+});

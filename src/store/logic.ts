@@ -92,6 +92,33 @@ export function kickTransition(
   if (completed) next.theme = "";
   return next;
 }
+export function joinTransition(room: Room, id: string, name: string): Room {
+  if (room.players.some((p) => p.id === id)) return room;
+  const returning =
+    (room.departedIds ?? []).includes(id) ||
+    (room.departed ?? []).some((p) => p.id === id);
+  requireThat(
+    room.players.length < 6 &&
+      room.phase !== "finished" &&
+      (room.phase === "lobby" || returning),
+    "開始済み、終了済み、または満員です",
+  );
+  const next = structuredClone(room);
+  next.players.push({ id, name: nameOf(name), joinedAt: Date.now() });
+  next.departed = (room.departed ?? []).filter((p) => p.id !== id);
+  next.departedIds = (room.departedIds ?? []).filter((pid) => pid !== id);
+  if (room.phase !== "lobby") {
+    next.roster = [...room.roster, id];
+    if (room.phase !== "reveal") {
+      allocateRound(next);
+      next.phase = "theme";
+      next.candidates = [];
+      next.predictionDeadline = null;
+      next.rejected = [];
+    }
+  }
+  return next;
+}
 export function current(room: Room, roundId: string) {
   requireThat(
     room.roundId === roundId,

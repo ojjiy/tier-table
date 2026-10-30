@@ -12,6 +12,7 @@ import {
   transition,
   resultOf,
   kickTransition,
+  joinTransition,
 } from "./logic";
 interface State {
   room: Room;
@@ -79,20 +80,7 @@ export class LocalStore implements Store {
   }
   async joinRoom(id: string, name: string) {
     await this.mutate(id, (s) => {
-      requireThat(
-        !s.room.departed?.some((p) => p.id === this.playerId),
-        "このルームから退出しています",
-      );
-      if (s.room.players.some((p) => p.id === this.playerId)) return;
-      requireThat(
-        s.room.phase === "lobby" && s.room.players.length < 6,
-        "開始済み、または満員です",
-      );
-      s.room.players.push({
-        id: this.playerId,
-        name: nameOf(name),
-        joinedAt: Date.now(),
-      });
+      s.room = joinTransition(s.room, this.playerId, name);
     });
   }
   async kickPlayer(id: string, targetId: string) {

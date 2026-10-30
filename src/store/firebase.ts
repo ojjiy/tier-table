@@ -41,6 +41,7 @@ import {
   checkAnswer,
   transition,
   kickTransition,
+  joinTransition,
   roundHistory,
 } from "./logic";
 interface PublicResult {
@@ -100,20 +101,12 @@ export class FirebaseStore implements Store {
       const s = await t.get(this.ref(id));
       requireThat(s.exists(), "ルームが見つかりません");
       const room = s.data() as Room;
-      requireThat(
-        !room.departed?.some((p) => p.id === this.playerId),
-        "このルームから退出しています",
-      );
       if (room.players.some((p) => p.id === this.playerId)) return;
-      requireThat(
-        room.phase === "lobby" && room.players.length < 6,
-        "開始済み、または満員です",
-      );
-      const players = [
-        ...room.players,
-        { id: this.playerId, name: nameOf(name), joinedAt: Date.now() },
-      ];
-      t.update(this.ref(id), { players, memberIds: players.map((p) => p.id) });
+      const next = joinTransition(room, this.playerId, name);
+      t.set(this.ref(id), {
+        ...next,
+        memberIds: next.players.map((p) => p.id),
+      });
     });
   }
   private async list<T>(id: string, n: string, kind: string): Promise<T[]> {

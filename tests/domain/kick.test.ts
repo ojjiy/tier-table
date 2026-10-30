@@ -44,7 +44,7 @@ it("残り1人なら終了し、自分自身のキックは禁止", () => {
   expect(n.hostId).toBe("b");
   expect(() => kickTransition(r, "a", "a", false)).toThrow();
 });
-it("開始待ちなら募集を維持し、退出者の再参加を防ぐ情報を残す", () => {
+it("開始待ちなら募集を維持し、再参加時に参照する退出情報を残す", () => {
   const r = newRoom("r", "a", "A");
   r.players.push({ id: "b", name: "B", joinedAt: 2 });
   const n = kickTransition(r, "a", "b", false);
@@ -74,4 +74,31 @@ it("履歴フィールドのない旧ルームも次のラウンド番号を飛�
   );
   expect(n.roundId).toBe("2");
   expect(n.roundIds).toEqual(["1", "2"]);
+});
+it("再参加は公開中の結果を変えず、退出者を主役順の末尾へ戻す", async () => {
+  const { joinTransition } = await import("../../src/store/logic");
+  const r = kickTransition(room(), "a", "b", false);
+  r.phase = "reveal";
+  const n = joinTransition(r, "b", "B");
+  expect(n.phase).toBe("reveal");
+  expect(n.roundId).toBe(r.roundId);
+  expect(n.roundIndex).toBe(r.roundIndex);
+  expect(n.roster).toEqual(["a", "c", "b"]);
+  expect(n.departed).toEqual([]);
+  expect(joinTransition(n, "b", "B")).toEqual(n);
+});
+it("終了・満員・未退出者の途中参加は拒否する", async () => {
+  const { joinTransition } = await import("../../src/store/logic");
+  const r = kickTransition(room(), "a", "b", false);
+  expect(() => joinTransition(r, "d", "D")).toThrow();
+  expect(() => joinTransition({ ...r, phase: "finished" }, "b", "B")).toThrow();
+  const full = {
+    ...r,
+    players: Array.from({ length: 6 }, (_, i) => ({
+      id: String(i),
+      name: String(i),
+      joinedAt: i,
+    })),
+  };
+  expect(() => joinTransition(full, "b", "B")).toThrow();
 });

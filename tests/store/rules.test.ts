@@ -196,7 +196,7 @@ it("旧版の主役配置中ルームから提出しても進行できる", asyn
   );
   expect((await store.read("r")).ready).toContain("a");
 });
-it("参加者がホストをキックし、退出者の読み書き・再参加を拒否する", async () => {
+it("参加者がホストをキックし、再参加前の回答を拒否する", async () => {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const admin = ctx.firestore();
     await updateDoc(doc(admin, "rooms/r"), {
@@ -220,7 +220,7 @@ it("参加者がホストをキックし、退出者の読み書き・再参加�
   expect(snapshot.room.phase).toBe("theme");
   expect(snapshot.room.roundId).toBe("2");
   expect(snapshot.room.roster).toEqual(["b", "c"]);
-  await assertFails(getDoc(doc(db("a"), "rooms/r")));
+  await assertSucceeds(getDoc(doc(db("a"), "rooms/r")));
   await assertFails(
     setDoc(doc(db("a"), "rooms/r/rounds/2/drafts/a"), {
       playerId: "a",
@@ -237,7 +237,7 @@ it("参加者がホストをキックし、退出者の読み書き・再参加�
     "finished",
   );
 });
-it("キックに便乗した状態改ざんとロビーへの再参加を拒否する", async () => {
+it("キックに便乗した状態改ざんを拒否しロビーへの再参加を許可する", async () => {
   await env.withSecurityRulesDisabled((c) =>
     updateDoc(doc(c.firestore(), "rooms/r"), {
       phase: "lobby",
@@ -254,16 +254,15 @@ it("キックに便乗した状態改ざんとロビーへの再参加を拒否�
     updateDoc(doc(db("b"), "rooms/r"), { hostId: "b", phase: "finished" }),
   );
   await a.kickPlayer("r", "b");
-  await assertFails(getDoc(doc(db("b"), "rooms/r")));
-  await expect(
-    new FirebaseStore(db("b"), "b").joinRoom("r", "b"),
-  ).rejects.toThrow();
+  await assertSucceeds(getDoc(doc(db("b"), "rooms/r")));
   await assertFails(
     updateDoc(doc(db("b"), "rooms/r"), {
       players: room.players,
       memberIds: ["a", "b"],
     }),
   );
+  await new FirebaseStore(db("b"), "b").joinRoom("r", "b");
+  expect((await a.read("r")).room.players).toHaveLength(2);
 });
 it.each([0, 1])("旧ルームのラウンド%dから通常の次へ進める", async (index) => {
   await env.withSecurityRulesDisabled(async (c) => {
@@ -316,4 +315,29 @@ it.each([
   const store = new FirebaseStore(db(actor), actor);
   await store.kickPlayer("r", target);
   expect((await store.read("r")).room.players).toHaveLength(5);
+});
+
+it("進行中の再参加は新しいラウンドを割り当て、古い回答は再利用しない", async () => {
+  await env.withSecurityRulesDisabled((c) =>
+    updateDoc(doc(c.firestore(), "rooms/r"), {
+      players: [...room.players, { id: "c", name: "c", joinedAt: 3 }],
+      memberIds: ["a", "b", "c"],
+      roster: ["a", "b", "c"],
+    }),
+  );
+  const { FirebaseStore } = await import("../../src/store/firebase");
+  const a = new FirebaseStore(db("a"), "a"),
+    b = new FirebaseStore(db("b"), "b");
+  await a.kickPlayer("r", "b");
+  await expect(
+    new FirebaseStore(db("d"), "d").joinRoom("r", "d"),
+  ).rejects.toThrow();
+  await b.joinRoom("r", "b");
+  const s = await b.read("r");
+  expect(s.room.roundId).toBe("3");
+  expect(s.room.roster).toEqual(["a", "c", "b"]);
+  expect(s.room.departedIds).toEqual([]);
+  await a.advance("r", { type: "theme", theme: "再開" });
+  await b.submitDraft("r", "3", ["x", "y"]);
+  await expect(b.submitDraft("r", "2", ["x", "y"])).rejects.toThrow();
 });

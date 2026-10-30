@@ -136,7 +136,7 @@ it("別タブ相当の同時回答で送信済み回答を失わない", async (
   expect((await b.read(id)).ready.sort()).toEqual(["a", "b", "c"]);
   expect((await c.read(id)).answer).toBeDefined();
 });
-it("キック後も完了済み得点を残し、退出者の再参加と書き込みを拒否する", async () => {
+it("キック後も完了済み得点を残し、再参加前の書き込みを拒否する", async () => {
   const a = new LocalStore("a", storage),
     b = new LocalStore("b", storage),
     c = new LocalStore("c", storage);
@@ -163,10 +163,13 @@ it("キック後も完了済み得点を残し、退出者の再参加と書き�
   expect(s.room.hostId).toBe("b");
   expect(s.room.roster[s.room.roundIndex]).toBe("b");
   await expect(a.read(id)).rejects.toThrow();
-  await expect(a.joinRoom(id, "A")).rejects.toThrow();
   await expect(
     a.saveAnswer(id, r, { placement: p, submittedAt: 1 }),
   ).rejects.toThrow();
+  await a.joinRoom(id, "A");
+  expect((await a.read(id)).results[0].scores.b).toBe(6);
+  expect((await a.read(id)).room.hostId).toBe("b");
+  await b.kickPlayer(id, "a");
   await b.advance(id, { type: "theme", theme: "new" });
   const nr = (await b.read(id)).room.roundId;
   await b.submitDraft(id, nr, ["g", "h", "i"]);
@@ -175,4 +178,31 @@ it("キック後も完了済み得点を残し、退出者の再参加と書き�
   await c.kickPlayer(id, "b");
   expect((await c.read(id)).room.phase).toBe("finished");
   expect((await c.read(id)).results[0].scores.c).toBe(6);
+});
+it("退出者はロビーと進行中に再参加でき、未完了ラウンドだけ再開する", async () => {
+  const a = new LocalStore("a", storage),
+    b = new LocalStore("b", storage),
+    c = new LocalStore("c", storage);
+  const id = await a.createRoom("A");
+  await b.joinRoom(id, "B");
+  await a.kickPlayer(id, "b");
+  await b.joinRoom(id, "B");
+  await c.joinRoom(id, "C");
+  await a.advance(id, { type: "start" });
+  await a.kickPlayer(id, "b");
+  await a.advance(id, { type: "theme", theme: "t" });
+  const old = (await a.read(id)).room.roundId;
+  await expect(
+    new LocalStore("d", storage).joinRoom(id, "D"),
+  ).rejects.toThrow();
+  await b.joinRoom(id, "B");
+  const s = await b.read(id);
+  expect(s.room.phase).toBe("theme");
+  expect(s.room.roundId).not.toBe(old);
+  expect(s.room.roster).toEqual(["a", "c", "b"]);
+  expect(s.room.departedIds).not.toContain("b");
+  await expect(b.submitDraft(id, old, ["x", "y"])).rejects.toThrow();
+  await a.kickPlayer(id, "b");
+  await b.joinRoom(id, "B");
+  expect((await b.read(id)).room.players).toHaveLength(3);
 });
