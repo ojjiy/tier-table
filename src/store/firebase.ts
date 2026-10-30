@@ -12,6 +12,7 @@ import {
   doc,
   collection,
   getDoc,
+  getDocFromServer,
   getDocs,
   setDoc,
   onSnapshot,
@@ -199,22 +200,38 @@ export class FirebaseStore implements Store {
       round = "",
       scheduled = false,
       running = false,
-      dirty = false;
+      dirty = false,
+      checkingMembership = false;
     let children: (() => void)[] = [];
+    let sub: () => void = () => {};
     const onError = (error: Error) => {
       if (!active) return;
       if ((error as Error & { code?: string }).code !== "permission-denied") {
         handler(error);
         return;
       }
-      void this.room(id)
-        .then((room) => {
-          member(room, this.playerId);
-          if (active) handler(error);
+      if (checkingMembership) return;
+      checkingMembership = true;
+      // Detach the room and child listeners before checking membership, otherwise
+      // the shared room target can still return its pre-kick snapshot.
+      sub();
+      children.forEach((u) => u());
+      children = [];
+      round = "";
+      void getDocFromServer(this.ref(id))
+        .then((snapshot) => {
+          requireThat(snapshot.exists(), "ルームが見つかりません");
+          member(snapshot.data() as Room, this.playerId);
+          if (active) {
+            sub = watch();
+            handler(error);
+          }
         })
         .catch((e) => {
           if (!active) return;
           const code = (e as { code?: string }).code;
+          if (code !== "permission-denied" && code !== "room-removed")
+            sub = watch();
           handler(
             code === "permission-denied" || code === "room-removed"
               ? Object.assign(new Error("ルームから退出しました"), {
@@ -222,6 +239,9 @@ export class FirebaseStore implements Store {
                 })
               : error,
           );
+        })
+        .finally(() => {
+          checkingMembership = false;
         });
     };
     const refresh = () => {
@@ -244,48 +264,59 @@ export class FirebaseStore implements Store {
         }
       });
     };
-    const sub = onSnapshot(
-      this.ref(id),
-      (s) => {
-        if (!s.exists()) {
-          onError(new Error("ルームが見つかりません"));
-          return;
-        }
-        const r = s.data() as Room;
-        if (round !== r.roundId) {
-          children.forEach((u) => u());
-          round = r.roundId;
-          children = [
-            onSnapshot(
-              collection(this.db, "rooms", id, "rounds", round, "drafts"),
-              refresh,
-              onError,
-            ),
-            onSnapshot(
-              collection(this.db, "rooms", id, "rounds", round, "ready"),
-              { includeMetadataChanges: true },
-              refresh,
-              onError,
-            ),
-            onSnapshot(
-              this.rref(id, round, "result", "public"),
-              { includeMetadataChanges: true },
-              (result) => {
-                if (!result.metadata.hasPendingWrites) refresh();
-              },
-              onError,
-            ),
-            onSnapshot(
-              this.rref(id, round, "answers", this.playerId),
-              refresh,
-              onError,
-            ),
-          ];
-        }
-        refresh();
-      },
-      onError,
-    );
+    const watch = () =>
+      onSnapshot(
+        this.ref(id),
+        { includeMetadataChanges: true },
+        (s) => {
+          if (!s.exists()) {
+            onError(new Error("ルームが見つかりません"));
+            return;
+          }
+          const r = s.data() as Room;
+          try {
+            member(r, this.playerId);
+          } catch (error) {
+            if (s.metadata.fromCache || s.metadata.hasPendingWrites) return;
+            children.forEach((u) => u());
+            onError(error as Error);
+            return;
+          }
+          if (round !== r.roundId) {
+            children.forEach((u) => u());
+            round = r.roundId;
+            children = [
+              onSnapshot(
+                collection(this.db, "rooms", id, "rounds", round, "drafts"),
+                refresh,
+                onError,
+              ),
+              onSnapshot(
+                collection(this.db, "rooms", id, "rounds", round, "ready"),
+                { includeMetadataChanges: true },
+                refresh,
+                onError,
+              ),
+              onSnapshot(
+                this.rref(id, round, "result", "public"),
+                { includeMetadataChanges: true },
+                (result) => {
+                  if (!result.metadata.hasPendingWrites) refresh();
+                },
+                onError,
+              ),
+              onSnapshot(
+                this.rref(id, round, "answers", this.playerId),
+                refresh,
+                onError,
+              ),
+            ];
+          }
+          refresh();
+        },
+        onError,
+      );
+    sub = watch();
     return () => {
       active = false;
       sub();
