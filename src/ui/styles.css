@@ -655,7 +655,8 @@ summary > strong {
   vertical-align: bottom;
 }
 .busy .primary,
-.busy .secondary {
+.busy .secondary,
+.busy .kick-button {
   pointer-events: none;
   opacity: 0.65;
 }

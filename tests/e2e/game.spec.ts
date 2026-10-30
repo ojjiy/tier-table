@@ -475,6 +475,8 @@ test("キックされた人が同じゲームに再参加し、320pxで新しい
   await expect(
     b.getByRole("heading", { name: "ルームから退出しました" }),
   ).toBeVisible();
+  // Wait for the host to receive the new round before editing its theme.
+  await expect(a.locator(".players .player")).toHaveCount(2);
   await a.getByLabel("今回のテーマ", { exact: true }).fill("再参加テスト");
   await a.getByRole("button", { name: "ワード募集をはじめる" }).click();
   await expect(a.getByLabel("ワード3", { exact: true })).toBeVisible();
